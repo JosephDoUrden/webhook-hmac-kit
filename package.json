@@ -48,11 +48,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/yusufcanb/webhook-hmac-kit.git"
+    "url": "git+https://github.com/JosephDoUrden/webhook-hmac-kit.git"
   },
-  "homepage": "https://github.com/yusufcanb/webhook-hmac-kit#readme",
+  "homepage": "https://github.com/JosephDoUrden/webhook-hmac-kit#readme",
   "bugs": {
-    "url": "https://github.com/yusufcanb/webhook-hmac-kit/issues"
+    "url": "https://github.com/JosephDoUrden/webhook-hmac-kit/issues"
   },
   "devDependencies": {
     "@biomejs/biome": "^1.9.0",
