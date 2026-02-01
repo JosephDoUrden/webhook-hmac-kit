@@ -1,0 +1,16 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "Bash(node -e:*)",
+      "Bash(npm install)",
+      "Bash(npm run typecheck:*)",
+      "Bash(npm install:*)",
+      "Bash(npm run lint)",
+      "Bash(npx biome:*)",
+      "Bash(npm run test)",
+      "Bash(npm run build)",
+      "Bash(node --input-type=module -e \"import {signWebhook, verifyWebhook} from ''./dist/index.js''; const ts = Math.floor\\(Date.now\\(\\)/1000\\); const r = signWebhook\\({secret:''s'',payload:''p'',timestamp:ts,nonce:''n''}\\); console.log\\(''ESM sign:'', r\\); const v = await verifyWebhook\\({secret:''s'',payload:''p'',signature:r.signature,timestamp:ts,nonce:''n''}\\); console.log\\(''ESM verify:'', v\\);\")"
+    ]
+  }
+}
