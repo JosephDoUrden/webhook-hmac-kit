@@ -5,10 +5,23 @@ import { DEFAULT_TOLERANCE_SECONDS, DEFAULT_VERSION } from './types.js';
 import type { VerifyWebhookOptions, VerifyWebhookResult } from './types.js';
 
 export async function verifyWebhook(options: VerifyWebhookOptions): Promise<VerifyWebhookResult> {
+  if (!options.secret) {
+    throw new Error('secret must not be empty');
+  }
+
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE_SECONDS;
+
+  if (!Number.isFinite(tolerance) || tolerance < 0) {
+    throw new Error('tolerance must be a non-negative finite number');
+  }
+
   const version = DEFAULT_VERSION;
 
   // 1. Timestamp check (cheapest — no crypto, no I/O)
+  if (!Number.isFinite(options.timestamp)) {
+    throw new WebhookTimestampError('Webhook timestamp is not a valid number');
+  }
+
   const nowSeconds = Math.floor(Date.now() / 1000);
   if (Math.abs(nowSeconds - options.timestamp) > tolerance) {
     throw new WebhookTimestampError();

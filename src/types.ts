@@ -24,5 +24,5 @@ export interface VerifyWebhookOptions {
 }
 
 export interface VerifyWebhookResult {
-  valid: boolean;
+  valid: true;
 }

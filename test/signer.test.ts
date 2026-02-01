@@ -15,6 +15,17 @@ describe('signWebhook', () => {
     });
   }
 
+  it('rejects empty secret', () => {
+    expect(() =>
+      signWebhook({
+        secret: '',
+        payload: 'test',
+        timestamp: 1000,
+        nonce: 'n',
+      }),
+    ).toThrow('secret must not be empty');
+  });
+
   it('uses v1 as default version', () => {
     const withDefault = signWebhook({
       secret: TEST_SECRET,

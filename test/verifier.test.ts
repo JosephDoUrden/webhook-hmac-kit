@@ -273,6 +273,95 @@ describe('verifyWebhook', () => {
     });
   });
 
+  describe('input validation', () => {
+    it('rejects empty secret', async () => {
+      await expect(
+        verifyWebhook({
+          secret: '',
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow('secret must not be empty');
+    });
+
+    it('rejects NaN timestamp', async () => {
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: Number.NaN,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookTimestampError);
+    });
+
+    it('rejects Infinity timestamp', async () => {
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: Number.POSITIVE_INFINITY,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookTimestampError);
+    });
+
+    it('rejects NaN tolerance', async () => {
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+          tolerance: Number.NaN,
+        }),
+      ).rejects.toThrow('tolerance must be a non-negative finite number');
+    });
+
+    it('rejects Infinity tolerance', async () => {
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+          tolerance: Number.POSITIVE_INFINITY,
+        }),
+      ).rejects.toThrow('tolerance must be a non-negative finite number');
+    });
+
+    it('rejects negative tolerance', async () => {
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+          tolerance: -1,
+        }),
+      ).rejects.toThrow('tolerance must be a non-negative finite number');
+    });
+
+    it('accepts tolerance of 0 (exact second match only)', async () => {
+      const result = await verifyWebhook({
+        secret: TEST_SECRET,
+        payload: firstVector.payload,
+        signature: firstVector.signature,
+        timestamp: firstVector.timestamp,
+        nonce: firstVector.nonce,
+        tolerance: 0,
+      });
+      expect(result).toEqual({ valid: true });
+    });
+  });
+
   describe('check ordering', () => {
     it('checks timestamp before signature', async () => {
       vi.setSystemTime((TEST_TIMESTAMP + 600) * 1000);

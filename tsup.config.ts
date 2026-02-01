@@ -7,4 +7,6 @@ export default defineConfig({
   sourcemap: true,
   clean: true,
   minify: false,
+  noExternal: [],
+  external: ['node:crypto'],
 });

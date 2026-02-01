@@ -4,6 +4,10 @@ import { DEFAULT_VERSION } from './types.js';
 import type { SignWebhookOptions, SignWebhookResult } from './types.js';
 
 export function signWebhook(options: SignWebhookOptions): SignWebhookResult {
+  if (!options.secret) {
+    throw new Error('secret must not be empty');
+  }
+
   const version = options.version ?? DEFAULT_VERSION;
   const canonical = buildCanonicalString(
     version,
