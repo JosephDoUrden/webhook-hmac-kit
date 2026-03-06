@@ -16,6 +16,36 @@
         "types": "./dist/index.d.cts",
         "default": "./dist/index.cjs"
       }
+    },
+    "./express": {
+      "import": {
+        "types": "./dist/adapters/express.d.ts",
+        "default": "./dist/adapters/express.js"
+      },
+      "require": {
+        "types": "./dist/adapters/express.d.cts",
+        "default": "./dist/adapters/express.cjs"
+      }
+    },
+    "./fastify": {
+      "import": {
+        "types": "./dist/adapters/fastify.d.ts",
+        "default": "./dist/adapters/fastify.js"
+      },
+      "require": {
+        "types": "./dist/adapters/fastify.d.cts",
+        "default": "./dist/adapters/fastify.cjs"
+      }
+    },
+    "./nest": {
+      "import": {
+        "types": "./dist/adapters/nest.d.ts",
+        "default": "./dist/adapters/nest.js"
+      },
+      "require": {
+        "types": "./dist/adapters/nest.d.cts",
+        "default": "./dist/adapters/nest.cjs"
+      }
     }
   },
   "sideEffects": false,
