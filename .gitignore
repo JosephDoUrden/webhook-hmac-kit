@@ -24,6 +24,10 @@ Thumbs.db
 *.swp
 *.swo
 
+# Local assistant config
+.claude/
+CLAUDE.md
+
 # Logs
 *.log
 npm-debug.log*
