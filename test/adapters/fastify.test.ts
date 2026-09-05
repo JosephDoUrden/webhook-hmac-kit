@@ -9,7 +9,7 @@ const firstVector = {
 };
 
 function signPayload(payload: string, timestamp: number, nonce: string) {
-  return signWebhook({ secret: TEST_SECRET, payload, timestamp, nonce }).signature;
+  return signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce }).signature;
 }
 
 function createMockRequest(overrides: Record<string, unknown> = {}) {
@@ -67,7 +67,7 @@ describe('Fastify webhookPlugin', () => {
     const fastify = createMockFastify();
     const done = vi.fn();
 
-    webhookPlugin(fastify, { secret: TEST_SECRET }, done);
+    webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
 
     expect(fastify.decorations.verifyWebhook).toBeTypeOf('function');
     expect(fastify.requestDecorations.webhookVerified).toBe(false);
@@ -77,7 +77,7 @@ describe('Fastify webhookPlugin', () => {
   it('verifies valid webhook', async () => {
     const fastify = createMockFastify();
     const done = vi.fn();
-    webhookPlugin(fastify, { secret: TEST_SECRET }, done);
+    webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
 
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
@@ -102,7 +102,7 @@ describe('Fastify webhookPlugin', () => {
   it('uses rawBody when available', async () => {
     const fastify = createMockFastify();
     const done = vi.fn();
-    webhookPlugin(fastify, { secret: TEST_SECRET }, done);
+    webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
 
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
@@ -128,7 +128,7 @@ describe('Fastify webhookPlugin', () => {
   it('returns 400 for missing headers', async () => {
     const fastify = createMockFastify();
     const done = vi.fn();
-    webhookPlugin(fastify, { secret: TEST_SECRET }, done);
+    webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
 
     const request = createMockRequest({ headers: {} });
     const reply = createMockReply();
@@ -146,7 +146,7 @@ describe('Fastify webhookPlugin', () => {
   it('returns 401 for invalid signature', async () => {
     const fastify = createMockFastify();
     const done = vi.fn();
-    webhookPlugin(fastify, { secret: TEST_SECRET }, done);
+    webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
 
     const request = createMockRequest({
       headers: {
@@ -170,7 +170,7 @@ describe('Fastify webhookPlugin', () => {
     vi.setSystemTime((TEST_TIMESTAMP + 600) * 1000);
     const fastify = createMockFastify();
     const done = vi.fn();
-    webhookPlugin(fastify, { secret: TEST_SECRET }, done);
+    webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
 
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
@@ -194,7 +194,7 @@ describe('Fastify webhookPlugin', () => {
   it('returns 409 for replayed nonce', async () => {
     const fastify = createMockFastify();
     const done = vi.fn();
-    webhookPlugin(fastify, { secret: TEST_SECRET, nonceValidator: async () => false }, done);
+    webhookPlugin(fastify, { secrets: TEST_SECRET, nonceValidator: async () => false }, done);
 
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
@@ -221,7 +221,7 @@ describe('Fastify webhookPlugin', () => {
     webhookPlugin(
       fastify,
       {
-        secret: TEST_SECRET,
+        secrets: TEST_SECRET,
         signatureHeader: 'x-sig',
         timestampHeader: 'x-ts',
         nonceHeader: 'x-nc',
@@ -252,7 +252,7 @@ describe('Fastify webhookPlugin', () => {
     const onError = vi.fn();
     const fastify = createMockFastify();
     const done = vi.fn();
-    webhookPlugin(fastify, { secret: TEST_SECRET, onError }, done);
+    webhookPlugin(fastify, { secrets: TEST_SECRET, onError }, done);
 
     const request = createMockRequest({
       headers: {

@@ -68,7 +68,7 @@ export class WebhookGuard {
 
     try {
       await verifyWebhook({
-        secret: this.options.secret,
+        secrets: this.options.secrets,
         payload,
         signature: headerResult.signature,
         timestamp: headerResult.timestamp,

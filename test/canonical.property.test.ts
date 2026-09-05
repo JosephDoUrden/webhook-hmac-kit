@@ -106,14 +106,14 @@ describe('canonical encoding is injective', () => {
 
     await fc.assert(
       fc.asyncProperty(nonceArb, payloadArb, async (nonce, payload) => {
-        const { signature } = signWebhook({ secret: TEST_SECRET, payload, timestamp, nonce });
+        const { signature } = signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
         const rest = `${nonce}.${payload}`;
 
         for (let i = 0; i < rest.length; i++) {
           if (rest[i] !== '.' || i === nonce.length) continue;
           await expect(
             verifyWebhook({
-              secret: TEST_SECRET,
+              secrets: TEST_SECRET,
               payload: rest.slice(i + 1),
               signature,
               timestamp,
@@ -131,7 +131,7 @@ describe('the v1 collision (audit finding 1) no longer verifies', () => {
   it('re-splitting at a colon is rejected because the nonce grammar forbids colons', async () => {
     const timestamp = Math.floor(Date.now() / 1000);
     const { signature } = signWebhook({
-      secret: TEST_SECRET,
+      secrets: TEST_SECRET,
       payload: 'a:b:c',
       timestamp,
       nonce: 'abc',
@@ -142,7 +142,7 @@ describe('the v1 collision (audit finding 1) no longer verifies', () => {
       ['abc:a:b', 'c'],
     ] as const) {
       await expect(
-        verifyWebhook({ secret: TEST_SECRET, payload, signature, timestamp, nonce }),
+        verifyWebhook({ secrets: TEST_SECRET, payload, signature, timestamp, nonce }),
       ).rejects.toThrow(WebhookNonceError);
     }
   });
@@ -150,7 +150,7 @@ describe('the v1 collision (audit finding 1) no longer verifies', () => {
   it('re-splitting at a dot is rejected for the same reason', async () => {
     const timestamp = Math.floor(Date.now() / 1000);
     const { signature } = signWebhook({
-      secret: TEST_SECRET,
+      secrets: TEST_SECRET,
       payload: 'a.b.c',
       timestamp,
       nonce: 'abc',
@@ -161,7 +161,7 @@ describe('the v1 collision (audit finding 1) no longer verifies', () => {
       ['abc.a.b', 'c'],
     ] as const) {
       await expect(
-        verifyWebhook({ secret: TEST_SECRET, payload, signature, timestamp, nonce }),
+        verifyWebhook({ secrets: TEST_SECRET, payload, signature, timestamp, nonce }),
       ).rejects.toThrow(WebhookNonceError);
     }
   });
@@ -177,14 +177,14 @@ describe('the v1 collision (audit finding 1) no longer verifies', () => {
 
     const nonce = 'abc';
     const payload = 'a.b:c';
-    const { signature } = signWebhook({ secret: TEST_SECRET, payload, timestamp, nonce });
+    const { signature } = signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
 
     await expect(
-      verifyWebhook({ secret: TEST_SECRET, payload, signature, timestamp, nonce, nonceValidator }),
+      verifyWebhook({ secrets: TEST_SECRET, payload, signature, timestamp, nonce, nonceValidator }),
     ).resolves.toEqual({ valid: true });
 
     await expect(
-      verifyWebhook({ secret: TEST_SECRET, payload, signature, timestamp, nonce, nonceValidator }),
+      verifyWebhook({ secrets: TEST_SECRET, payload, signature, timestamp, nonce, nonceValidator }),
     ).rejects.toThrow(/replay/i);
 
     for (const [n, p] of [
@@ -193,7 +193,7 @@ describe('the v1 collision (audit finding 1) no longer verifies', () => {
     ] as const) {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: p,
           signature,
           timestamp,

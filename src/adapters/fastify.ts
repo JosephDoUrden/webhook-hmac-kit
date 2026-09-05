@@ -54,7 +54,7 @@ export function webhookPlugin(
 
       try {
         await verifyWebhook({
-          secret: options.secret,
+          secrets: options.secrets,
           payload,
           signature: headerResult.signature,
           timestamp: headerResult.timestamp,

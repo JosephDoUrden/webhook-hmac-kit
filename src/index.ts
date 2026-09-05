@@ -11,6 +11,7 @@ export {
   WebhookNonceError,
 } from './errors.js';
 export type { WebhookErrorCode } from './errors.js';
+export { normalizeSecrets } from './secrets.js';
 export { signWebhook } from './signer.js';
 export { SIGNATURE_PATTERN, formatSignature, parseSignature } from './signature.js';
 export type { ParsedSignature } from './signature.js';

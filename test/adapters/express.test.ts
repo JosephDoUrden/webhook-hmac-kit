@@ -33,7 +33,7 @@ function createMockRes() {
 }
 
 function signPayload(payload: string, timestamp: number, nonce: string) {
-  return signWebhook({ secret: TEST_SECRET, payload, timestamp, nonce }).signature;
+  return signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce }).signature;
 }
 
 describe('Express webhookVerifier middleware', () => {
@@ -58,7 +58,7 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
-    const middleware = webhookVerifier({ secret: TEST_SECRET });
+    const middleware = webhookVerifier({ secrets: TEST_SECRET });
     middleware(req, res, next);
 
     await vi.waitFor(() => expect(next).toHaveBeenCalled());
@@ -78,7 +78,7 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
-    const middleware = webhookVerifier({ secret: TEST_SECRET });
+    const middleware = webhookVerifier({ secrets: TEST_SECRET });
     middleware(req, res, next);
 
     await vi.waitFor(() => expect(next).toHaveBeenCalled());
@@ -95,7 +95,7 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
-    webhookVerifier({ secret: TEST_SECRET })(req, res, next);
+    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
 
     expect(res.statusCode).toBe(400);
     expect(res.body).toEqual({ error: 'Missing required header: x-webhook-signature' });
@@ -112,7 +112,7 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
-    webhookVerifier({ secret: TEST_SECRET })(req, res, next);
+    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
 
     expect(res.statusCode).toBe(400);
     expect(res.body).toEqual({ error: 'Missing required header: x-webhook-timestamp' });
@@ -128,7 +128,7 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
-    webhookVerifier({ secret: TEST_SECRET })(req, res, next);
+    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
 
     expect(res.statusCode).toBe(400);
     expect(res.body).toEqual({ error: 'Missing required header: x-webhook-nonce' });
@@ -145,7 +145,7 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
-    webhookVerifier({ secret: TEST_SECRET })(req, res, next);
+    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
 
     await vi.waitFor(() => expect(res.statusCode).toBe(401));
     expect(res.body).toEqual({
@@ -168,7 +168,7 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
-    webhookVerifier({ secret: TEST_SECRET })(req, res, next);
+    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
 
     await vi.waitFor(() => expect(res.statusCode).toBe(400));
     expect(res.body).toEqual({
@@ -190,7 +190,7 @@ describe('Express webhookVerifier middleware', () => {
     const next = vi.fn();
 
     webhookVerifier({
-      secret: TEST_SECRET,
+      secrets: TEST_SECRET,
       nonceValidator: async () => false,
     })(req, res, next);
 
@@ -214,7 +214,7 @@ describe('Express webhookVerifier middleware', () => {
     const next = vi.fn();
 
     webhookVerifier({
-      secret: TEST_SECRET,
+      secrets: TEST_SECRET,
       signatureHeader: 'x-custom-sig',
       timestampHeader: 'x-custom-ts',
       nonceHeader: 'x-custom-nonce',
@@ -236,7 +236,7 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
-    webhookVerifier({ secret: TEST_SECRET, onError })(req, res, next);
+    webhookVerifier({ secrets: TEST_SECRET, onError })(req, res, next);
 
     await vi.waitFor(() => expect(onError).toHaveBeenCalled());
     expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error);

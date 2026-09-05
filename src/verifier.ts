@@ -1,14 +1,13 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
 import { buildCanonicalString, isValidNonce, isValidTimestamp } from './canonical.js';
 import { WebhookNonceError, WebhookSignatureError, WebhookTimestampError } from './errors.js';
+import { normalizeSecrets } from './secrets.js';
 import { parseSignature } from './signature.js';
 import { DEFAULT_TOLERANCE_SECONDS, SIGNATURE_VERSION } from './types.js';
 import type { VerifyWebhookOptions, VerifyWebhookResult } from './types.js';
 
 export async function verifyWebhook(options: VerifyWebhookOptions): Promise<VerifyWebhookResult> {
-  if (!options.secret) {
-    throw new Error('secret must not be empty');
-  }
+  const secrets = normalizeSecrets(options.secrets);
 
   const tolerance = options.tolerance ?? DEFAULT_TOLERANCE_SECONDS;
 
@@ -45,13 +44,17 @@ export async function verifyWebhook(options: VerifyWebhookOptions): Promise<Veri
     throw new WebhookSignatureError('Webhook signature version is not supported');
   }
 
-  // 4. Signature check (crypto, but no I/O)
+  // 4. Signature check (crypto, but no I/O). Every candidate secret is evaluated, whether or not
+  //    an earlier one matched, so the time taken depends only on how many secrets are configured
+  //    and not on which one (if any) produced the signature. Both buffers are 32 bytes by
+  //    construction, so timingSafeEqual cannot throw on length.
   const canonical = buildCanonicalString(options.timestamp, options.nonce, options.payload);
-  const expected = createHmac('sha256', options.secret).update(canonical).digest();
-
-  // Both sides are 32 bytes by construction (SHA-256 digest, 64 hex chars parsed above), so
-  // timingSafeEqual cannot throw on length.
-  if (!timingSafeEqual(expected, parsed.digest)) {
+  let matches = 0;
+  for (const secret of secrets) {
+    const expected = createHmac('sha256', secret).update(canonical).digest();
+    matches |= timingSafeEqual(expected, parsed.digest) ? 1 : 0;
+  }
+  if (matches === 0) {
     throw new WebhookSignatureError();
   }
 

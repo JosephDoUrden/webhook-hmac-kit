@@ -37,7 +37,7 @@ export function webhookVerifier(options: AdapterOptions): ExpressMiddleware {
     const payload = Buffer.isBuffer(req.body) ? req.body.toString('utf-8') : req.body;
 
     verifyWebhook({
-      secret: options.secret,
+      secrets: options.secrets,
       payload,
       signature: headerResult.signature,
       timestamp: headerResult.timestamp,

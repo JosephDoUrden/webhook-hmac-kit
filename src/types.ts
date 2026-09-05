@@ -4,7 +4,8 @@ export const DEFAULT_TOLERANCE_SECONDS = 300;
 export const SIGNATURE_VERSION = 'v2';
 
 export interface SignWebhookOptions {
-  secret: string;
+  /** One secret, or a list where the first entry is the one used to sign. */
+  secrets: string | string[];
   /** Exact bytes that will go on the wire. Never a re-serialized object. */
   payload: string;
   /** Unix seconds, non-negative integer. */
@@ -14,11 +15,13 @@ export interface SignWebhookOptions {
 }
 
 export interface SignWebhookResult {
+  /** Wire form, `v2={hex}`. Put this in the signature header as is. */
   signature: string;
 }
 
 export interface VerifyWebhookOptions {
-  secret: string;
+  /** One secret, or every secret that is currently live. A signature made with any of them is accepted. */
+  secrets: string | string[];
   payload: string;
   signature: string;
   timestamp: number;

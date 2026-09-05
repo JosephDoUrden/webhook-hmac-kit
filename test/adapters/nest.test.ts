@@ -14,7 +14,7 @@ const firstVector = {
 };
 
 function signPayload(payload: string, timestamp: number, nonce: string) {
-  return signWebhook({ secret: TEST_SECRET, payload, timestamp, nonce }).signature;
+  return signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce }).signature;
 }
 
 function createMockContext(overrides: Record<string, unknown> = {}) {
@@ -57,7 +57,7 @@ describe('NestJS WebhookGuard', () => {
       },
     });
 
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
     const result = await guard.canActivate(context);
 
     expect(result).toBe(true);
@@ -75,7 +75,7 @@ describe('NestJS WebhookGuard', () => {
       },
     });
 
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
     const result = await guard.canActivate(context);
 
     expect(result).toBe(true);
@@ -83,7 +83,7 @@ describe('NestJS WebhookGuard', () => {
 
   it('throws HttpException(400) for missing headers', async () => {
     const context = createMockContext({ headers: {} });
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
 
     await expect(guard.canActivate(context)).rejects.toThrow(HttpException);
 
@@ -106,7 +106,7 @@ describe('NestJS WebhookGuard', () => {
         'x-webhook-nonce': firstVector.nonce,
       },
     });
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
 
     try {
       await guard.canActivate(context);
@@ -127,7 +127,7 @@ describe('NestJS WebhookGuard', () => {
         'x-webhook-nonce': firstVector.nonce,
       },
     });
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
 
     try {
       await guard.canActivate(context);
@@ -148,7 +148,7 @@ describe('NestJS WebhookGuard', () => {
       },
     });
     const guard = new WebhookGuard({
-      secret: TEST_SECRET,
+      secrets: TEST_SECRET,
       nonceValidator: async () => false,
     });
 
@@ -171,7 +171,7 @@ describe('NestJS WebhookGuard', () => {
       },
     });
     const guard = new WebhookGuard({
-      secret: TEST_SECRET,
+      secrets: TEST_SECRET,
       signatureHeader: 'x-custom-sig',
       timestampHeader: 'x-custom-ts',
       nonceHeader: 'x-custom-nonce',
@@ -190,7 +190,7 @@ describe('NestJS WebhookGuard', () => {
         'x-webhook-nonce': firstVector.nonce,
       },
     });
-    const guard = new WebhookGuard({ secret: TEST_SECRET, onError });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET, onError });
 
     try {
       await guard.canActivate(context);
@@ -204,7 +204,7 @@ describe('NestJS WebhookGuard', () => {
 
 describe('WebhookModule', () => {
   it('forRoot returns module config with providers and exports', () => {
-    const options = { secret: 'test-secret' };
+    const options = { secrets: 'test-secret' };
     const result = WebhookModule.forRoot(options);
 
     expect(result.module).toBe(WebhookModule);

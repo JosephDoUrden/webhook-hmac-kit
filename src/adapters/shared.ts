@@ -10,7 +10,7 @@ export const DEFAULT_TIMESTAMP_HEADER = 'x-webhook-timestamp';
 export const DEFAULT_NONCE_HEADER = 'x-webhook-nonce';
 
 export interface AdapterOptions {
-  secret: string;
+  secrets: string | string[];
   tolerance?: number | undefined;
   nonceValidator?: ((nonce: string) => Promise<boolean>) | undefined;
   signatureHeader?: string | undefined;
