@@ -45,9 +45,16 @@ function buildCanonicalPrefix(timestamp: number, nonce: string): string {
  * This is the readable form, for test vectors and for anything that needs to show what was signed.
  * The bytes that actually go into the HMAC come from buildCanonicalBytes: a JS string cannot hold
  * a body that is not UTF-8 text, and encoding one loses the distinction between the bytes.
+ *
+ * Payloads are type-checked because a template literal stringifies anything: without the guard a
+ * JS caller signing ['a'], null or {} would get the signature for 'a', 'null' or
+ * '[object Object]', and two callers that meant different things would collide.
  */
 export function buildCanonicalString(timestamp: number, nonce: string, payload: string): string {
   const prefix = buildCanonicalPrefix(timestamp, nonce);
+  if (typeof payload !== 'string') {
+    throw new TypeError('payload must be a string');
+  }
   return `${prefix}${payload}`;
 }
 
@@ -66,6 +73,9 @@ export function buildCanonicalBytes(
   payload: WebhookPayload,
 ): Buffer {
   const prefix = buildCanonicalPrefix(timestamp, nonce);
+  if (typeof payload !== 'string' && !(payload instanceof Uint8Array)) {
+    throw new TypeError('payload must be a string or a Uint8Array');
+  }
   const payloadBytes = typeof payload === 'string' ? Buffer.from(payload, 'utf8') : payload;
   return Buffer.concat([Buffer.from(prefix, 'utf8'), payloadBytes]);
 }

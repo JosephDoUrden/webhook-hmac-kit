@@ -118,3 +118,31 @@ describe('buildCanonicalBytes', () => {
     expect(() => buildCanonicalBytes(1000, 'a.b', 'body')).toThrow(/nonce/);
   });
 });
+
+// TypeScript stops these at compile time; a JS caller gets no such help, and a stringified payload
+// collides with the string that happens to look the same ('null', '[object Object]', 'a').
+describe('payload type guard', () => {
+  const rejected: Array<[string, unknown]> = [
+    ['an array', ['a']],
+    ['null', null],
+    ['a plain object', {}],
+    ['undefined', undefined],
+  ];
+
+  for (const [name, payload] of rejected) {
+    it(`buildCanonicalString rejects ${name}`, () => {
+      expect(() => buildCanonicalString(1000, 'n', payload as string)).toThrow(TypeError);
+      expect(() => buildCanonicalString(1000, 'n', payload as string)).toThrow(/payload/);
+    });
+
+    it(`buildCanonicalBytes rejects ${name}`, () => {
+      expect(() => buildCanonicalBytes(1000, 'n', payload as string)).toThrow(TypeError);
+      expect(() => buildCanonicalBytes(1000, 'n', payload as string)).toThrow(/payload/);
+    });
+  }
+
+  it('buildCanonicalString rejects bytes, which it cannot render as text', () => {
+    const payload = Uint8Array.from([0x61]) as unknown as string;
+    expect(() => buildCanonicalString(1000, 'n', payload)).toThrow(/payload/);
+  });
+});

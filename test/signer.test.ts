@@ -132,3 +132,18 @@ describe('signWebhook with byte inputs', () => {
     expect(a.signature).not.toBe(b.signature);
   });
 });
+
+describe('signWebhook payload type guard', () => {
+  for (const payload of [['a'], null, {}, undefined]) {
+    it(`refuses to sign ${JSON.stringify(payload) ?? 'undefined'}`, () => {
+      expect(() =>
+        signWebhook({
+          secrets: TEST_SECRET,
+          payload: payload as string,
+          timestamp: 1000,
+          nonce: 'n',
+        }),
+      ).toThrow(/payload/);
+    });
+  }
+});
