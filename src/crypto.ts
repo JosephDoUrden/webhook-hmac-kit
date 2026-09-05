@@ -82,8 +82,9 @@ export function importHmacKey(keyBytes: Uint8Array): Promise<HmacKey> {
 
 /** The MAC of `data` under `keyBytes`, as 32 bytes. */
 export async function hmacSha256(keyBytes: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
+  const subtle = getSubtle();
   const key = await importHmacKey(keyBytes);
-  return new Uint8Array(await getSubtle().sign(HMAC_SHA256.name, key, bufferSource(data)));
+  return new Uint8Array(await subtle.sign(HMAC_SHA256.name, key, bufferSource(data)));
 }
 
 /**
@@ -147,11 +148,15 @@ export async function blindedEqual(a: Uint8Array, b: Uint8Array): Promise<boolea
     subtle.sign(HMAC_SHA256.name, blindingKey, bufferSource(b)),
   ]);
 
-  // Both are 32 bytes whatever went in, so a length difference between the operands shows up as a
-  // difference in the digests rather than as an early return.
   const left = new Uint8Array(blindedA);
   const right = new Uint8Array(blindedB);
 
+  // The length term is not what defends against a length mismatch — the blinding already does
+  // that. Both digests are 32 bytes whatever went in, so operands of different lengths arrive here
+  // as two different 32-byte values and fail on content, with no early return and nothing said
+  // about which was longer. This term is insurance against a future change of digest size making
+  // the two runs unequal, so that a shorter one could never compare equal to a prefix of a longer.
+  // It is a constant under SHA-256 and costs nothing.
   let difference = left.length ^ right.length;
   for (let i = 0; i < left.length; i++) {
     difference |= (left[i] as number) ^ (right[i] as number);
