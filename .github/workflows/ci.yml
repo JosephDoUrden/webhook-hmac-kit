@@ -15,12 +15,14 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        node-version: [18, 20, 22]
+        # 22 is the oldest supported line (20 went end-of-life on 30 Apr 2026); 24 is Active LTS
+        # until 20 Oct 2026. Add 26 when it becomes LTS on 28 Oct 2026.
+        node-version: [22, 24]
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: ${{ matrix.node-version }}
           cache: npm
