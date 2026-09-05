@@ -44,14 +44,10 @@ export function webhookPlugin(
   fastify.decorate(
     'verifyWebhook',
     async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply | undefined> => {
-      const headerResult = extractHeaders(headerNames, (name) => {
-        const val = request.headers[name];
-        return Array.isArray(val) ? val[0] : val;
-      });
+      const headerResult = extractHeaders(headerNames, (name) => request.headers[name]);
 
-      if ('missing' in headerResult) {
-        const body = { error: `Missing required header: ${headerResult.missing}` };
-        return reply.code(400).send(body);
+      if ('invalid' in headerResult) {
+        return reply.code(400).send({ error: headerResult.invalid });
       }
 
       // Fastify parses JSON by default, so `request.body` is usually an object. The raw bytes

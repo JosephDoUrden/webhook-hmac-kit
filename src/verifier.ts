@@ -60,7 +60,18 @@ export async function verifyWebhook(options: VerifyWebhookOptions): Promise<Veri
 
   // 5. Nonce replay check (may involve network I/O — last)
   if (options.nonceValidator) {
-    const isValid = await options.nonceValidator(options.nonce);
+    let isValid: boolean;
+    try {
+      isValid = await options.nonceValidator(options.nonce);
+    } catch (cause: unknown) {
+      // A nonce store that is down must not answer differently from a replayed nonce. Anything
+      // that is not a WebhookError maps to 500, which is the status oracle the uniform 401 exists
+      // to remove; it only speaks to a caller that already holds a valid signature, but there is
+      // no reason to leave it. The cause travels on the error for onError to log.
+      throw new WebhookNonceError('Webhook nonce could not be checked', 'WEBHOOK_NONCE_INVALID', {
+        cause,
+      });
+    }
     if (!isValid) {
       throw new WebhookNonceError();
     }

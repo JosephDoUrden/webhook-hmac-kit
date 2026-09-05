@@ -242,7 +242,8 @@ describe('Express webhookVerifier middleware', () => {
     expect(req.webhookVerified).toBe(true);
   });
 
-  it('throws a configuration error when the body has already been parsed', () => {
+  it('reports a parsed body as a configuration error, through onError', () => {
+    const onError = vi.fn();
     const req = createMockReq({
       body: JSON.parse(firstVector.payload),
       headers: {
@@ -254,9 +255,12 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
-    expect(() => webhookVerifier({ secrets: TEST_SECRET })(req, res, next)).toThrow(/raw body/i);
+    webhookVerifier({ secrets: TEST_SECRET, onError })(req, res, next);
+
+    expect(res.statusCode).toBe(500);
+    expect(res.body).toEqual({ error: 'Internal server error' });
+    expect(String(onError.mock.calls[0]?.[0])).toMatch(/raw body/i);
     expect(next).not.toHaveBeenCalled();
-    expect(res.statusCode).toBe(0);
   });
 
   it('supports custom header names', async () => {
@@ -352,6 +356,103 @@ describe('Express webhookVerifier with byte bodies', () => {
     webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
 
     await vi.waitFor(() => expect(res.statusCode).toBe(401));
+    expect(next).not.toHaveBeenCalled();
+  });
+});
+
+describe('Express webhookVerifier header handling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects a timestamp header with leading zeros', async () => {
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const req = createMockReq({
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': `000${TEST_TIMESTAMP}`,
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const res = createMockRes();
+    const next = vi.fn();
+    const onError = vi.fn();
+
+    webhookVerifier({ secrets: TEST_SECRET, onError })(req, res, next);
+
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(WebhookTimestampError);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('rejects a header the framework kept as two values', () => {
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const req = createMockReq({
+      headers: {
+        'x-webhook-signature': [signature, `v2=${'b'.repeat(64)}`],
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const res = createMockRes();
+    const next = vi.fn();
+
+    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
+
+    expect(res.statusCode).toBe(400);
+    expect(res.body).toEqual({ error: 'Duplicate header: x-webhook-signature' });
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('accepts a header the framework kept as a single-entry array', async () => {
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const req = createMockReq({
+      headers: {
+        'x-webhook-signature': [signature],
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const res = createMockRes();
+    const next = vi.fn();
+
+    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
+
+    await vi.waitFor(() => expect(next).toHaveBeenCalled());
+    expect(req.webhookVerified).toBe(true);
+  });
+
+  it('answers 401 when the nonce validator throws, with the cause in onError', async () => {
+    const storeError = new Error('Redis connection failed');
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const req = createMockReq({
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const res = createMockRes();
+    const next = vi.fn();
+    const onError = vi.fn();
+
+    webhookVerifier({
+      secrets: TEST_SECRET,
+      nonceValidator: async () => {
+        throw storeError;
+      },
+      onError,
+    })(req, res, next);
+
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+    expect(res.body).toEqual({ error: 'Webhook verification failed' });
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(WebhookNonceError);
+    expect(onError.mock.calls[0]?.[0]).toHaveProperty('cause', storeError);
     expect(next).not.toHaveBeenCalled();
   });
 });

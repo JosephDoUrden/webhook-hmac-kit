@@ -232,7 +232,7 @@ describe('verifyWebhook', () => {
       }
     });
 
-    it('rejects upper-case hex', async () => {
+    it('accepts upper-case hex, which a sender formatting with %X will send', async () => {
       await expect(
         verifyWebhook({
           secrets: TEST_SECRET,
@@ -241,7 +241,7 @@ describe('verifyWebhook', () => {
           timestamp: firstVector.timestamp,
           nonce: firstVector.nonce,
         }),
-      ).rejects.toThrow(WebhookSignatureError);
+      ).resolves.toEqual({ valid: true });
     });
 
     it('rejects a folded duplicate header value ("sigA, sigB")', async () => {
@@ -334,21 +334,22 @@ describe('verifyWebhook', () => {
       expect(validator).toHaveBeenCalledWith(firstVector.nonce);
     });
 
-    it('propagates nonceValidator errors', async () => {
+    it('wraps a nonceValidator failure, keeping the cause', async () => {
       const redisError = new Error('Redis connection failed');
 
-      await expect(
-        verifyWebhook({
-          secrets: TEST_SECRET,
-          payload: firstVector.payload,
-          signature: firstVector.signature,
-          timestamp: firstVector.timestamp,
-          nonce: firstVector.nonce,
-          nonceValidator: async () => {
-            throw redisError;
-          },
-        }),
-      ).rejects.toThrow('Redis connection failed');
+      const failure = verifyWebhook({
+        secrets: TEST_SECRET,
+        payload: firstVector.payload,
+        signature: firstVector.signature,
+        timestamp: firstVector.timestamp,
+        nonce: firstVector.nonce,
+        nonceValidator: async () => {
+          throw redisError;
+        },
+      });
+
+      await expect(failure).rejects.toThrow(WebhookNonceError);
+      await expect(failure).rejects.toHaveProperty('cause', redisError);
     });
   });
 

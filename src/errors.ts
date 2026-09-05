@@ -18,8 +18,8 @@ export type WebhookErrorCode =
 export class WebhookError extends Error {
   readonly code: WebhookErrorCode;
 
-  constructor(message: string, code: WebhookErrorCode) {
-    super(message);
+  constructor(message: string, code: WebhookErrorCode, options?: ErrorOptions) {
+    super(message, options);
     this.name = 'WebhookError';
     this.code = code;
   }
@@ -52,8 +52,9 @@ export class WebhookNonceError extends WebhookError {
       WebhookErrorCode,
       'WEBHOOK_NONCE_REPLAYED' | 'WEBHOOK_NONCE_INVALID'
     > = 'WEBHOOK_NONCE_REPLAYED',
+    options?: ErrorOptions,
   ) {
-    super(message, code);
+    super(message, code, options);
     this.name = 'WebhookNonceError';
   }
 }

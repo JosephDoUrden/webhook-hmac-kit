@@ -58,13 +58,10 @@ export class WebhookGuard {
     const request = context.switchToHttp().getRequest();
     const headerNames = getHeaderNames(this.options);
 
-    const headerResult = extractHeaders(headerNames, (name) => {
-      const val = request.headers[name];
-      return Array.isArray(val) ? val[0] : val;
-    });
+    const headerResult = extractHeaders(headerNames, (name) => request.headers[name]);
 
-    if ('missing' in headerResult) {
-      throw new HttpException({ error: `Missing required header: ${headerResult.missing}` }, 400);
+    if ('invalid' in headerResult) {
+      throw new HttpException({ error: headerResult.invalid }, 400);
     }
 
     // Create the app with `NestFactory.create(AppModule, { rawBody: true })` so `request.rawBody`

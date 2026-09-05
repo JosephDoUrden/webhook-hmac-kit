@@ -34,30 +34,55 @@ export function getHeaderNames(options: AdapterOptions): AdapterHeaders {
   };
 }
 
+/**
+ * Decimal digits with no leading zeros, so the number the sender signed is spelled the same way as
+ * the header it sent. Number() would also accept '1e9', '0x10' and '1.5'; '000{ts}' parses to the
+ * same number as '{ts}' while being different bytes, which leaves anything downstream that logs or
+ * dedupes on the raw header looking at a value that was never authenticated.
+ */
+export const TIMESTAMP_PATTERN = /^(0|[1-9]\d*)$/;
+
+/**
+ * Node folds duplicate request headers into one comma-joined string, which fails closed against the
+ * signature grammar. An array means some layer kept them apart instead, and taking the first entry
+ * would drop the rest without saying so, so more than one value is refused.
+ */
+function readHeader(
+  getter: (name: string) => string | string[] | undefined,
+  name: string,
+): { value: string } | { invalid: string } {
+  const raw = getter(name);
+  const value = Array.isArray(raw) ? raw[0] : raw;
+  if (Array.isArray(raw) && raw.length > 1) {
+    return { invalid: `Duplicate header: ${name}` };
+  }
+  return value ? { value } : { invalid: `Missing required header: ${name}` };
+}
+
 export function extractHeaders(
   headers: AdapterHeaders,
-  getter: (name: string) => string | undefined,
-): { signature: string; timestamp: number; nonce: string } | { missing: string } {
-  const signature = getter(headers.signatureHeader);
-  if (!signature) {
-    return { missing: headers.signatureHeader };
+  getter: (name: string) => string | string[] | undefined,
+): { signature: string; timestamp: number; nonce: string } | { invalid: string } {
+  const signature = readHeader(getter, headers.signatureHeader);
+  if ('invalid' in signature) {
+    return signature;
   }
 
-  const timestampRaw = getter(headers.timestampHeader);
-  if (!timestampRaw) {
-    return { missing: headers.timestampHeader };
+  const timestampRaw = readHeader(getter, headers.timestampHeader);
+  if ('invalid' in timestampRaw) {
+    return timestampRaw;
   }
 
-  const nonce = getter(headers.nonceHeader);
-  if (!nonce) {
-    return { missing: headers.nonceHeader };
+  const nonce = readHeader(getter, headers.nonceHeader);
+  if ('invalid' in nonce) {
+    return nonce;
   }
 
-  // Decimal digits only. Number() would also accept '1e9', '0x10' and '1.5', and the verifier's
-  // strict-integer check is easier to reason about when the header parser is strict too.
-  const timestamp = /^\d+$/.test(timestampRaw) ? Number(timestampRaw) : Number.NaN;
+  const timestamp = TIMESTAMP_PATTERN.test(timestampRaw.value)
+    ? Number(timestampRaw.value)
+    : Number.NaN;
 
-  return { signature, timestamp, nonce };
+  return { signature: signature.value, timestamp, nonce: nonce.value };
 }
 
 /**

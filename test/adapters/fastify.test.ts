@@ -365,3 +365,39 @@ describe('Fastify webhookPlugin reply handling', () => {
     expect(request.webhookVerified).toBe(true);
   });
 });
+
+describe('Fastify webhookPlugin header handling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects a header the framework kept as two values', async () => {
+    const fastify = createMockFastify();
+    webhookPlugin(fastify, { secrets: TEST_SECRET }, vi.fn());
+
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const request = createMockRequest({
+      headers: {
+        'x-webhook-signature': [signature, `v2=${'b'.repeat(64)}`],
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const reply = createMockReply();
+
+    const verifyHook = fastify.decorations.verifyWebhook as (
+      req: typeof request,
+      rep: typeof reply,
+    ) => Promise<unknown>;
+    await verifyHook(request, reply);
+
+    expect(reply.statusCode).toBe(400);
+    expect(reply.payload).toEqual({ error: 'Duplicate header: x-webhook-signature' });
+    expect(request.webhookVerified).toBe(false);
+  });
+});

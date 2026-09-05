@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { WebhookSignatureError } from '../src/errors.js';
+import { normalizeSecrets } from '../src/secrets.js';
 import { signWebhook } from '../src/signer.js';
 import { verifyWebhook } from '../src/verifier.js';
 import { TEST_SECRET, TEST_TIMESTAMP } from './vectors.js';
@@ -171,5 +172,52 @@ describe('secret rotation', () => {
         nonce,
       }),
     ).rejects.toThrow('secrets must not be empty');
+  });
+});
+
+describe('secret list hygiene', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+    vi.mocked(createHmac).mockClear();
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('evaluates a repeated secret once', async () => {
+    const { signature } = signWebhook({
+      secrets: TEST_SECRET,
+      payload,
+      timestamp: TEST_TIMESTAMP,
+      nonce,
+    });
+    vi.mocked(createHmac).mockClear();
+
+    await verifyWebhook({
+      secrets: [TEST_SECRET, TEST_SECRET, OLD_SECRET, TEST_SECRET],
+      payload,
+      signature,
+      timestamp: TEST_TIMESTAMP,
+      nonce,
+    });
+
+    expect(createHmac).toHaveBeenCalledTimes(2);
+  });
+
+  it('treats a string secret and its UTF-8 bytes as the same entry', () => {
+    expect(normalizeSecrets([TEST_SECRET, Buffer.from(TEST_SECRET, 'utf8')])).toHaveLength(1);
+  });
+
+  it('rejects more distinct secrets than a rotation could need', () => {
+    const many = Array.from({ length: 17 }, (_, i) => `whsec_${i}`);
+    expect(() => normalizeSecrets(many)).toThrow(/more than 16/);
+    expect(() => normalizeSecrets(many.slice(0, 16))).not.toThrow();
+  });
+
+  it('counts duplicates once against the cap', () => {
+    const many = Array.from({ length: 40 }, () => TEST_SECRET);
+    expect(() => normalizeSecrets(many)).not.toThrow();
   });
 });

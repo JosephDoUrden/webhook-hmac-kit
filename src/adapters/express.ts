@@ -1,3 +1,4 @@
+import type { WebhookPayload } from '../types.js';
 import { verifyWebhook } from '../verifier.js';
 import type { AdapterOptions } from './shared.js';
 import {
@@ -34,19 +35,32 @@ export function webhookVerifier(options: AdapterOptions): ExpressMiddleware {
   const headerNames = getHeaderNames(options);
 
   return (req, res, next) => {
-    const headerResult = extractHeaders(headerNames, (name) => {
-      const val = req.headers[name];
-      return Array.isArray(val) ? val[0] : val;
-    });
+    const fail = (error: unknown) => {
+      if (options.onError) {
+        options.onError(error);
+      }
+      const status = mapErrorToStatus(error);
+      const body = mapErrorToBody(error);
+      res.status(status).json(body);
+    };
 
-    if ('missing' in headerResult) {
-      const status = 400;
-      res.status(status).json({ error: `Missing required header: ${headerResult.missing}` });
+    const headerResult = extractHeaders(headerNames, (name) => req.headers[name]);
+
+    if ('invalid' in headerResult) {
+      res.status(400).json({ error: headerResult.invalid });
       return;
     }
 
-    // Throws synchronously on a parsed body: a misconfigured route, not a bad request.
-    const payload = resolveRawBody(req);
+    // Throws synchronously on a parsed body: a misconfigured route, not a bad request. It goes
+    // through the same handler as a verification failure so onError hears about it, and keeps its
+    // own 500 rather than being disguised as a rejected signature.
+    let payload: WebhookPayload;
+    try {
+      payload = resolveRawBody(req);
+    } catch (error: unknown) {
+      fail(error);
+      return;
+    }
 
     verifyWebhook({
       secrets: options.secrets,
@@ -61,13 +75,6 @@ export function webhookVerifier(options: AdapterOptions): ExpressMiddleware {
         req.webhookVerified = true;
         next();
       })
-      .catch((error: unknown) => {
-        if (options.onError) {
-          options.onError(error);
-        }
-        const status = mapErrorToStatus(error);
-        const body = mapErrorToBody(error);
-        res.status(status).json(body);
-      });
+      .catch(fail);
   };
 }

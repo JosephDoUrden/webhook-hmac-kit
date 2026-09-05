@@ -253,3 +253,35 @@ describe('WebhookModule', () => {
     expect(result.exports).toContain(WebhookGuard);
   });
 });
+
+describe('NestJS WebhookGuard header handling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects a header the framework kept as two values', async () => {
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const context = createMockContext({
+      headers: {
+        'x-webhook-signature': [signature, `v2=${'b'.repeat(64)}`],
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
+
+    try {
+      await guard.canActivate(context);
+      expect.fail('Should have thrown');
+    } catch (e) {
+      const err = e as HttpException;
+      expect(err.getStatus()).toBe(400);
+      expect(err.getResponse()).toEqual({ error: 'Duplicate header: x-webhook-signature' });
+    }
+  });
+});
