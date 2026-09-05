@@ -15,6 +15,35 @@ describe('public surface', () => {
     expect(api.formatSignature).toHaveLength(1);
   });
 
+  // Every error a consumer can catch is reachable by name. Catching by message, or by reading
+  // .name off an Error, is what people do when the class is not exported, and both break on the
+  // next wording change.
+  it('exports every error class it can throw', () => {
+    for (const name of [
+      'WebhookError',
+      'WebhookSignatureError',
+      'WebhookTimestampError',
+      'WebhookNonceError',
+      'WebCryptoUnavailableError',
+    ]) {
+      expect(Object.keys(api)).toContain(name);
+    }
+  });
+
+  // Load-bearing, not pedantry: the adapters answer 401 for a WebhookError and 500 for anything
+  // else. A runtime with no Web Crypto is the receiver being broken, not the caller's signature
+  // being wrong, so it must never become a WebhookError and start reporting itself as a rejected
+  // webhook.
+  it('keeps the Web Crypto failure outside the WebhookError hierarchy', () => {
+    const error = new api.WebCryptoUnavailableError();
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).toBeInstanceOf(api.WebCryptoUnavailableError);
+    expect(error).not.toBeInstanceOf(api.WebhookError);
+    expect(error.name).toBe('WebCryptoUnavailableError');
+    expect(error.message).toMatch(/--no-experimental-global-webcrypto/);
+  });
+
   // Nothing on the public surface asks for or hands back a Buffer. The digest a caller parses out
   // of a header has to be usable on a runtime that has never heard of Node.
   it('speaks Uint8Array, not Buffer', () => {

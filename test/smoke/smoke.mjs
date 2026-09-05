@@ -15,7 +15,12 @@
  */
 
 import assert from 'node:assert/strict';
-import { signWebhook, verifyWebhook } from '../../dist/index.js';
+import {
+  WebCryptoUnavailableError,
+  WebhookError,
+  signWebhook,
+  verifyWebhook,
+} from '../../dist/index.js';
 
 const SECRET = 'whsec_test_secret_key_1234567890';
 const TIMESTAMP = 1700000000;
@@ -130,6 +135,17 @@ assert.throws(
   () => signWebhook({ secrets: '', payload: 'x', timestamp: TIMESTAMP, nonce: 'n' }),
   /each secret must be a non-empty string or byte array/,
 );
+
+// The Web Crypto guard is re-exported from a different module than the other error classes, so it
+// is the export most likely to be dropped by a bundler or an export-condition mistake. It cannot be
+// triggered here - every runtime in this list has Web Crypto, which is the point - so what is
+// checked is that it arrived, and that it is still outside the hierarchy the adapters answer with
+// 401 rather than 500.
+assert.equal(typeof WebCryptoUnavailableError, 'function');
+const unavailable = new WebCryptoUnavailableError();
+assert.ok(unavailable instanceof Error);
+assert.ok(!(unavailable instanceof WebhookError));
+assert.match(unavailable.message, /--no-experimental-global-webcrypto/);
 
 const runtime =
   typeof Deno !== 'undefined'
