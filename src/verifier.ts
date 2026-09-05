@@ -1,5 +1,5 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import { buildCanonicalBytes, isValidNonce, isValidTimestamp } from './canonical.js';
+import { blindedEqual, hmacSha256 } from './crypto.js';
 import { WebhookNonceError, WebhookSignatureError, WebhookTimestampError } from './errors.js';
 import { normalizeSecrets } from './secrets.js';
 import { parseSignature } from './signature.js';
@@ -44,15 +44,21 @@ export async function verifyWebhook(options: VerifyWebhookOptions): Promise<Veri
     throw new WebhookSignatureError('Webhook signature version is not supported');
   }
 
-  // 4. Signature check (crypto, but no I/O). Every candidate secret is evaluated, whether or not
-  //    an earlier one matched, so the time taken depends only on how many secrets are configured
-  //    and not on which one (if any) produced the signature. Both buffers are 32 bytes by
-  //    construction, so timingSafeEqual cannot throw on length.
+  // 4. Signature check (crypto, but no I/O). Every candidate secret is evaluated, whether or not an
+  //    earlier one matched, so the time taken depends only on how many secrets are configured and
+  //    not on which one - if any - produced the signature. The results are OR-ed at the end rather
+  //    than returned from inside the loop: a `break` here would tell an attacker which position in
+  //    the rotation their forgery got closest to.
+  //
+  //    blindedEqual rather than subtle.verify. See crypto.ts for why: constant-time HMAC
+  //    verification is in the Web Crypto editor's draft only, it has no web-platform-test, and Node
+  //    shipped a plain memcmp until March 2026 (CVE-2026-21713). Three signs per secret and no
+  //    verify, which is what the rotation test asserts on.
   const canonical = buildCanonicalBytes(options.timestamp, options.nonce, options.payload);
   let matches = 0;
   for (const secret of secrets) {
-    const expected = createHmac('sha256', secret).update(canonical).digest();
-    matches |= timingSafeEqual(expected, parsed.digest) ? 1 : 0;
+    const expected = await hmacSha256(secret, canonical);
+    matches |= (await blindedEqual(expected, parsed.digest)) ? 1 : 0;
   }
   if (matches === 0) {
     throw new WebhookSignatureError();

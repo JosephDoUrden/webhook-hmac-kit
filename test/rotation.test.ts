@@ -1,20 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { utf8 } from '../src/bytes.js';
+import { getSubtle } from '../src/crypto.js';
 import { WebhookSignatureError } from '../src/errors.js';
 import { normalizeSecrets } from '../src/secrets.js';
 import { signWebhook } from '../src/signer.js';
 import { verifyWebhook } from '../src/verifier.js';
 import { TEST_SECRET, TEST_TIMESTAMP } from './vectors.js';
-
-vi.mock('node:crypto', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('node:crypto')>();
-  return {
-    ...actual,
-    createHmac: vi.fn(actual.createHmac),
-    timingSafeEqual: vi.fn(actual.timingSafeEqual),
-  };
-});
-
-import { createHmac, timingSafeEqual } from 'node:crypto';
 
 const OLD_SECRET = 'whsec_old_secret_key_0000000000';
 const payload = '{"event":"rotation"}';
@@ -24,12 +15,11 @@ describe('secret rotation', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(TEST_TIMESTAMP * 1000);
-    vi.mocked(createHmac).mockClear();
-    vi.mocked(timingSafeEqual).mockClear();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('signs with the first secret in the list', async () => {
@@ -105,41 +95,51 @@ describe('secret rotation', () => {
     ).rejects.toThrow(WebhookSignatureError);
   });
 
-  it('evaluates every candidate even after the first one matches', async () => {
+  // The work a verify does must depend on how many secrets are configured and on nothing else. It
+  // is three signs per secret - one expected MAC, then two more to blind that MAC and the presented
+  // digest under a throwaway key - and no verify at all, since the fold is done in blindedEqual.
+  // Whether the match is at the front, the middle, the end or nowhere makes no difference.
+  const ROTATION = [TEST_SECRET, OLD_SECRET, 'whsec_third'];
+
+  it.each([
+    ['the first', ROTATION[0] as string],
+    ['a middle', ROTATION[1] as string],
+    ['the last', ROTATION[2] as string],
+    ['no', 'whsec_retired_key'],
+  ])('does the same work when %s secret matches', async (_which, signingSecret) => {
     const { signature } = await signWebhook({
-      secrets: TEST_SECRET,
+      secrets: signingSecret,
       payload,
       timestamp: TEST_TIMESTAMP,
       nonce,
     });
-    vi.mocked(createHmac).mockClear();
-    vi.mocked(timingSafeEqual).mockClear();
+
+    const subtle = getSubtle();
+    const sign = vi.spyOn(subtle, 'sign');
+    const verify = vi.spyOn(subtle, 'verify');
 
     await verifyWebhook({
-      secrets: [TEST_SECRET, OLD_SECRET, 'whsec_third'],
+      secrets: ROTATION,
       payload,
       signature,
       timestamp: TEST_TIMESTAMP,
       nonce,
-    });
+    }).catch(() => undefined);
 
-    expect(createHmac).toHaveBeenCalledTimes(3);
-    expect(timingSafeEqual).toHaveBeenCalledTimes(3);
+    expect(sign).toHaveBeenCalledTimes(3 * ROTATION.length);
+    expect(verify).not.toHaveBeenCalled();
   });
 
-  it('evaluates every candidate when none matches', async () => {
+  it('still rejects when none of them matches', async () => {
     await expect(
       verifyWebhook({
-        secrets: [TEST_SECRET, OLD_SECRET, 'whsec_third'],
+        secrets: ROTATION,
         payload,
         signature: `v2=${'0'.repeat(64)}`,
         timestamp: TEST_TIMESTAMP,
         nonce,
       }),
     ).rejects.toThrow(WebhookSignatureError);
-
-    expect(createHmac).toHaveBeenCalledTimes(3);
-    expect(timingSafeEqual).toHaveBeenCalledTimes(3);
   });
 
   it('rejects an empty list', async () => {
@@ -189,11 +189,11 @@ describe('secret list hygiene', () => {
   beforeEach(() => {
     vi.useFakeTimers();
     vi.setSystemTime(TEST_TIMESTAMP * 1000);
-    vi.mocked(createHmac).mockClear();
   });
 
   afterEach(() => {
     vi.useRealTimers();
+    vi.restoreAllMocks();
   });
 
   it('evaluates a repeated secret once', async () => {
@@ -203,7 +203,8 @@ describe('secret list hygiene', () => {
       timestamp: TEST_TIMESTAMP,
       nonce,
     });
-    vi.mocked(createHmac).mockClear();
+
+    const sign = vi.spyOn(getSubtle(), 'sign');
 
     await verifyWebhook({
       secrets: [TEST_SECRET, TEST_SECRET, OLD_SECRET, TEST_SECRET],
@@ -213,11 +214,12 @@ describe('secret list hygiene', () => {
       nonce,
     });
 
-    expect(createHmac).toHaveBeenCalledTimes(2);
+    // Two distinct secrets out of four entries, so six signs and not twelve.
+    expect(sign).toHaveBeenCalledTimes(6);
   });
 
   it('treats a string secret and its UTF-8 bytes as the same entry', () => {
-    expect(normalizeSecrets([TEST_SECRET, Buffer.from(TEST_SECRET, 'utf8')])).toHaveLength(1);
+    expect(normalizeSecrets([TEST_SECRET, utf8(TEST_SECRET)])).toHaveLength(1);
   });
 
   it('rejects more distinct secrets than a rotation could need', () => {

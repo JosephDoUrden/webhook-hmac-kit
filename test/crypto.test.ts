@@ -1,8 +1,39 @@
+import { readFileSync, readdirSync } from 'node:fs';
+import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toHex, utf8 } from '../src/bytes.js';
 import { buildCanonicalBytes } from '../src/canonical.js';
 import { blindedEqual, getSubtle, hmacSha256, importHmacKey } from '../src/crypto.js';
 import { TEST_SECRET, vectors } from './vectors.js';
+
+/**
+ * Matches a module specifier, not the mention of one: getSubtle's remedy string quotes
+ * require('node:crypto') on purpose and must not trip this.
+ */
+const NODE_SPECIFIER = /(?:\bfrom|\bimport)\s*\(?\s*['"]node:/;
+
+function sourceFiles(dir: string): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
+    const path = join(dir, entry.name);
+    if (entry.isDirectory()) return sourceFiles(path);
+    return path.endsWith('.ts') ? [path] : [];
+  });
+}
+
+describe('src imports nothing from Node', () => {
+  // A literal 'node:...' specifier is resolved at bundle time by esbuild, wrangler, Vite and Metro
+  // whether or not the code around it can run, so a try/catch does not make one safe: octokit's
+  // React Native consumers got "Unable to resolve module node:crypto" from exactly this shape.
+  // Enforced here rather than trusted, because nothing else in the toolchain would notice.
+  it('has no node: specifier in any source file', () => {
+    const src = new URL('../src/', import.meta.url).pathname;
+    const offenders = sourceFiles(src)
+      .filter((file) => NODE_SPECIFIER.test(readFileSync(file, 'utf8')))
+      .map((file) => file.slice(src.length));
+
+    expect(offenders).toEqual([]);
+  });
+});
 
 describe('getSubtle', () => {
   afterEach(() => {
