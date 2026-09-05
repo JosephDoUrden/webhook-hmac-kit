@@ -1,7 +1,9 @@
 export type WebhookErrorCode =
   | 'WEBHOOK_SIGNATURE_INVALID'
   | 'WEBHOOK_TIMESTAMP_EXPIRED'
-  | 'WEBHOOK_NONCE_REPLAYED';
+  | 'WEBHOOK_TIMESTAMP_INVALID'
+  | 'WEBHOOK_NONCE_REPLAYED'
+  | 'WEBHOOK_NONCE_INVALID';
 
 export class WebhookError extends Error {
   readonly code: WebhookErrorCode;
@@ -21,15 +23,27 @@ export class WebhookSignatureError extends WebhookError {
 }
 
 export class WebhookTimestampError extends WebhookError {
-  constructor(message = 'Webhook timestamp has expired') {
-    super(message, 'WEBHOOK_TIMESTAMP_EXPIRED');
+  constructor(
+    message = 'Webhook timestamp has expired',
+    code: Extract<
+      WebhookErrorCode,
+      'WEBHOOK_TIMESTAMP_EXPIRED' | 'WEBHOOK_TIMESTAMP_INVALID'
+    > = 'WEBHOOK_TIMESTAMP_EXPIRED',
+  ) {
+    super(message, code);
     this.name = 'WebhookTimestampError';
   }
 }
 
 export class WebhookNonceError extends WebhookError {
-  constructor(message = 'Webhook nonce has been replayed') {
-    super(message, 'WEBHOOK_NONCE_REPLAYED');
+  constructor(
+    message = 'Webhook nonce has been replayed',
+    code: Extract<
+      WebhookErrorCode,
+      'WEBHOOK_NONCE_REPLAYED' | 'WEBHOOK_NONCE_INVALID'
+    > = 'WEBHOOK_NONCE_REPLAYED',
+  ) {
+    super(message, code);
     this.name = 'WebhookNonceError';
   }
 }

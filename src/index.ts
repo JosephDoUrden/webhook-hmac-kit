@@ -1,4 +1,9 @@
-export { buildCanonicalString } from './canonical.js';
+export {
+  NONCE_PATTERN,
+  buildCanonicalString,
+  isValidNonce,
+  isValidTimestamp,
+} from './canonical.js';
 export {
   WebhookError,
   WebhookSignatureError,
@@ -7,7 +12,7 @@ export {
 } from './errors.js';
 export type { WebhookErrorCode } from './errors.js';
 export { signWebhook } from './signer.js';
-export { DEFAULT_TOLERANCE_SECONDS, DEFAULT_VERSION } from './types.js';
+export { DEFAULT_TOLERANCE_SECONDS, SIGNATURE_VERSION } from './types.js';
 export type {
   SignWebhookOptions,
   SignWebhookResult,

@@ -298,6 +298,46 @@ describe('verifyWebhook', () => {
       ).rejects.toThrow(WebhookTimestampError);
     });
 
+    it('rejects a fractional timestamp even when it is inside the window', async () => {
+      const timestamp = TEST_TIMESTAMP + 0.5;
+      const { signature } = signWebhook({
+        secret: TEST_SECRET,
+        payload: 'x',
+        timestamp: TEST_TIMESTAMP,
+        nonce: 'n',
+      });
+
+      await expect(
+        verifyWebhook({ secret: TEST_SECRET, payload: 'x', signature, timestamp, nonce: 'n' }),
+      ).rejects.toThrow(WebhookTimestampError);
+    });
+
+    it('rejects a negative timestamp', async () => {
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: -1,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookTimestampError);
+    });
+
+    it('rejects a malformed nonce before touching the signature', async () => {
+      for (const nonce of ['', 'a.b', 'a:b', 'x'.repeat(65)]) {
+        await expect(
+          verifyWebhook({
+            secret: TEST_SECRET,
+            payload: firstVector.payload,
+            signature: 'not-a-signature',
+            timestamp: firstVector.timestamp,
+            nonce,
+          }),
+        ).rejects.toThrow(WebhookNonceError);
+      }
+    });
+
     it('rejects Infinity timestamp', async () => {
       await expect(
         verifyWebhook({

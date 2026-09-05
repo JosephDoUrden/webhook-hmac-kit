@@ -52,7 +52,9 @@ export function extractHeaders(
     return { missing: headers.nonceHeader };
   }
 
-  const timestamp = Number(timestampRaw);
+  // Decimal digits only. Number() would also accept '1e9', '0x10' and '1.5', and the verifier's
+  // strict-integer check is easier to reason about when the header parser is strict too.
+  const timestamp = /^\d+$/.test(timestampRaw) ? Number(timestampRaw) : Number.NaN;
 
   return { signature, timestamp, nonce };
 }

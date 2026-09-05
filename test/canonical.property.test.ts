@@ -1,0 +1,207 @@
+import fc from 'fast-check';
+import { describe, expect, it } from 'vitest';
+import { NONCE_PATTERN, buildCanonicalString } from '../src/canonical.js';
+import { WebhookNonceError } from '../src/errors.js';
+import { signWebhook } from '../src/signer.js';
+import { verifyWebhook } from '../src/verifier.js';
+import { TEST_SECRET } from './vectors.js';
+
+// Injectivity of the canonical encoding is what makes the nonce usable as a replay-cache key.
+// v1 (`v1:{ts}:{nonce}:{payload}`) was not injective: nonce and payload were both free-form and
+// adjacent, so one signed message could be re-split into several (nonce, payload) pairs that all
+// verified. v2 puts the strict-integer timestamp between a dot-free nonce and the payload.
+
+interface Fields {
+  timestamp: number;
+  nonce: string;
+  payload: string;
+}
+
+const timestampArb = fc.nat({ max: Number.MAX_SAFE_INTEGER });
+const nonceArb = fc.stringMatching(NONCE_PATTERN);
+
+// Payloads biased towards the characters that could confuse a delimiter-based parser:
+// dots, digits, colons, and things that look like a nonce or a version tag.
+const payloadArb = fc
+  .array(
+    fc.oneof(
+      fc.constant('.'),
+      fc.constant(':'),
+      fc.constant('v2.'),
+      fc.nat({ max: 99999 }).map(String),
+      nonceArb,
+      fc.string({ unit: 'grapheme', maxLength: 8 }),
+    ),
+    { maxLength: 24 },
+  )
+  .map((parts) => parts.join(''));
+
+const fieldsArb: fc.Arbitrary<Fields> = fc.record({
+  timestamp: timestampArb,
+  nonce: nonceArb,
+  payload: payloadArb,
+});
+
+// Test-side decoder. If build has a left inverse it is injective by construction.
+function decode(canonical: string): Fields | null {
+  const match = /^v2\.(\d+)\.([A-Za-z0-9_-]{1,64})\.([\s\S]*)$/.exec(canonical);
+  if (!match) return null;
+  return {
+    timestamp: Number(match[1]),
+    nonce: match[2] as string,
+    payload: match[3] as string,
+  };
+}
+
+function sameFields(a: Fields, b: Fields): boolean {
+  return a.timestamp === b.timestamp && a.nonce === b.nonce && a.payload === b.payload;
+}
+
+describe('canonical encoding is injective', () => {
+  it('decodes back to the exact fields it was built from (left inverse)', () => {
+    fc.assert(
+      fc.property(fieldsArb, (fields) => {
+        const canonical = buildCanonicalString(fields.timestamp, fields.nonce, fields.payload);
+        expect(decode(canonical)).toEqual(fields);
+      }),
+      { numRuns: 2000 },
+    );
+  });
+
+  it('distinct field triples never produce the same canonical string', () => {
+    fc.assert(
+      fc.property(fieldsArb, fieldsArb, (a, b) => {
+        fc.pre(!sameFields(a, b));
+        expect(buildCanonicalString(a.timestamp, a.nonce, a.payload)).not.toBe(
+          buildCanonicalString(b.timestamp, b.nonce, b.payload),
+        );
+      }),
+      { numRuns: 2000 },
+    );
+  });
+
+  it('moving the nonce/payload split to any other dot yields a nonce the grammar rejects', () => {
+    fc.assert(
+      fc.property(fieldsArb, (fields) => {
+        const canonical = buildCanonicalString(fields.timestamp, fields.nonce, fields.payload);
+        const rest = canonical.slice(`v2.${fields.timestamp}.`.length);
+
+        for (let i = 0; i < rest.length; i++) {
+          if (rest[i] !== '.') continue;
+          const nonce = rest.slice(0, i);
+          const payload = rest.slice(i + 1);
+          if (nonce === fields.nonce) {
+            expect(payload).toBe(fields.payload);
+          } else {
+            expect(NONCE_PATTERN.test(nonce)).toBe(false);
+          }
+        }
+      }),
+      { numRuns: 2000 },
+    );
+  });
+
+  it('a signed message cannot be re-split into a different (nonce, payload) that verifies', async () => {
+    const timestamp = Math.floor(Date.now() / 1000);
+
+    await fc.assert(
+      fc.asyncProperty(nonceArb, payloadArb, async (nonce, payload) => {
+        const { signature } = signWebhook({ secret: TEST_SECRET, payload, timestamp, nonce });
+        const rest = `${nonce}.${payload}`;
+
+        for (let i = 0; i < rest.length; i++) {
+          if (rest[i] !== '.' || i === nonce.length) continue;
+          await expect(
+            verifyWebhook({
+              secret: TEST_SECRET,
+              payload: rest.slice(i + 1),
+              signature,
+              timestamp,
+              nonce: rest.slice(0, i),
+            }),
+          ).rejects.toThrow(WebhookNonceError);
+        }
+      }),
+      { numRuns: 500 },
+    );
+  });
+});
+
+describe('the v1 collision (audit finding 1) no longer verifies', () => {
+  it('re-splitting at a colon is rejected because the nonce grammar forbids colons', async () => {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const { signature } = signWebhook({
+      secret: TEST_SECRET,
+      payload: 'a:b:c',
+      timestamp,
+      nonce: 'abc',
+    });
+
+    for (const [nonce, payload] of [
+      ['abc:a', 'b:c'],
+      ['abc:a:b', 'c'],
+    ] as const) {
+      await expect(
+        verifyWebhook({ secret: TEST_SECRET, payload, signature, timestamp, nonce }),
+      ).rejects.toThrow(WebhookNonceError);
+    }
+  });
+
+  it('re-splitting at a dot is rejected for the same reason', async () => {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const { signature } = signWebhook({
+      secret: TEST_SECRET,
+      payload: 'a.b.c',
+      timestamp,
+      nonce: 'abc',
+    });
+
+    for (const [nonce, payload] of [
+      ['abc.a', 'b.c'],
+      ['abc.a.b', 'c'],
+    ] as const) {
+      await expect(
+        verifyWebhook({ secret: TEST_SECRET, payload, signature, timestamp, nonce }),
+      ).rejects.toThrow(WebhookNonceError);
+    }
+  });
+
+  it('a replay cache keyed on the nonce now fires on every redelivery', async () => {
+    const timestamp = Math.floor(Date.now() / 1000);
+    const seen = new Set<string>();
+    const nonceValidator = async (nonce: string): Promise<boolean> => {
+      if (seen.has(nonce)) return false;
+      seen.add(nonce);
+      return true;
+    };
+
+    const nonce = 'abc';
+    const payload = 'a.b:c';
+    const { signature } = signWebhook({ secret: TEST_SECRET, payload, timestamp, nonce });
+
+    await expect(
+      verifyWebhook({ secret: TEST_SECRET, payload, signature, timestamp, nonce, nonceValidator }),
+    ).resolves.toEqual({ valid: true });
+
+    await expect(
+      verifyWebhook({ secret: TEST_SECRET, payload, signature, timestamp, nonce, nonceValidator }),
+    ).rejects.toThrow(/replay/i);
+
+    for (const [n, p] of [
+      ['abc.a', 'b:c'],
+      ['abc.a.b', ':c'],
+    ] as const) {
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: p,
+          signature,
+          timestamp,
+          nonce: n,
+          nonceValidator,
+        }),
+      ).rejects.toThrow(WebhookNonceError);
+    }
+    expect(seen.size).toBe(1);
+  });
+});

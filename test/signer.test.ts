@@ -26,39 +26,20 @@ describe('signWebhook', () => {
     ).toThrow('secret must not be empty');
   });
 
-  it('uses v1 as default version', () => {
-    const withDefault = signWebhook({
-      secret: TEST_SECRET,
-      payload: 'test',
-      timestamp: 1000,
-      nonce: 'n',
-    });
-    const withExplicit = signWebhook({
-      secret: TEST_SECRET,
-      payload: 'test',
-      timestamp: 1000,
-      nonce: 'n',
-      version: 'v1',
-    });
-    expect(withDefault.signature).toBe(withExplicit.signature);
+  it('rejects a nonce outside the v2 grammar', () => {
+    for (const nonce of ['', 'a.b', 'a:b', 'x'.repeat(65)]) {
+      expect(() =>
+        signWebhook({ secret: TEST_SECRET, payload: 'test', timestamp: 1000, nonce }),
+      ).toThrow(/nonce/);
+    }
   });
 
-  it('produces different signature with custom version', () => {
-    const v1 = signWebhook({
-      secret: TEST_SECRET,
-      payload: 'test',
-      timestamp: 1000,
-      nonce: 'n',
-      version: 'v1',
-    });
-    const v2 = signWebhook({
-      secret: TEST_SECRET,
-      payload: 'test',
-      timestamp: 1000,
-      nonce: 'n',
-      version: 'v2',
-    });
-    expect(v1.signature).not.toBe(v2.signature);
+  it('rejects a non-integer or negative timestamp', () => {
+    for (const timestamp of [1000.5, -1, Number.NaN, Number.POSITIVE_INFINITY]) {
+      expect(() =>
+        signWebhook({ secret: TEST_SECRET, payload: 'test', timestamp, nonce: 'n' }),
+      ).toThrow(/timestamp/);
+    }
   });
 
   it('is deterministic: same inputs produce same output', () => {
