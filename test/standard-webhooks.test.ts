@@ -28,6 +28,12 @@ import {
 /** A third live key, so a rotation in the tests can hold one that never matches anything. */
 const THIRD_SECRET = `whsec_${'A'.repeat(32)}`;
 
+// The two ends of the spec's 24-64 byte range, exercised one byte either side. Base64 carries
+// three bytes per four characters, so 86 characters decode to 64 and 87 to 65 - 88 would be 66 and
+// would pass a boundary check that was one out.
+const SIXTY_FOUR_BYTE_SECRET = `whsec_${'A'.repeat(86)}`;
+const SIXTY_FIVE_BYTE_SECRET = `whsec_${'A'.repeat(87)}`;
+
 /**
  * What a verify costs, in `subtle.sign` calls: one MAC per secret, then one blinding signature over
  * each of those MACs and each presented digest, all under a single blinding key drawn once. It is a
@@ -362,14 +368,23 @@ describe('secrets', () => {
   // whoever is sending to us.
   it.each([
     ['23 bytes', UNPADDED_SECRET],
-    ['65 bytes', `whsec_${'A'.repeat(88)}`],
+    ['65 bytes', SIXTY_FIVE_BYTE_SECRET],
   ])('refuses a %s key on the sign path', (_name, secret) => {
     expect(() => parseStandardWebhooksSecret(secret, { usage: 'sign' })).toThrow(/24/);
   });
 
-  it('accepts the same keys on the verify path', () => {
+  // Both ends of the range, one byte inside it. A test that only exercised 23 and 66 would pass
+  // against an off-by-one at either boundary.
+  it.each([
+    ['24 bytes', VECTOR_A.secret, 24],
+    ['64 bytes', SIXTY_FOUR_BYTE_SECRET, 64],
+  ])('accepts a %s key on the sign path', (_name, secret, length) => {
+    expect(parseStandardWebhooksSecret(secret, { usage: 'sign' })).toHaveLength(length);
+  });
+
+  it('accepts the out-of-range keys on the verify path', () => {
     expect(parseStandardWebhooksSecret(UNPADDED_SECRET, { usage: 'verify' })).toHaveLength(23);
-    expect(parseStandardWebhooksSecret(`whsec_${'A'.repeat(88)}`)).toHaveLength(66);
+    expect(parseStandardWebhooksSecret(SIXTY_FIVE_BYTE_SECRET)).toHaveLength(65);
   });
 });
 
