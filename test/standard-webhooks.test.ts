@@ -765,8 +765,12 @@ describe('the Standard Webhooks encoding is not injective', () => {
   // Written as a fixed example rather than a property on purpose: a property here would assert
   // that a collision exists, which reads like a goal. It is a known limitation, and the point of
   // pinning it is that nobody treats `webhook-id` as authenticated.
-  const first = { messageId: 'msg_1.1700000000', timestamp: 1700000300, payload: 'body' };
-  const second = { messageId: 'msg_1', timestamp: 1700000000, payload: '1700000300.body' };
+  // 299 seconds apart, not 300. The clock below sits on the first message's timestamp, so at 300
+  // the second one lands exactly on |now - timestamp| <= tolerance and the test would turn into an
+  // assertion about the boundary condition - passing or failing on which way that comparison is
+  // written, rather than on the collision it is here to document.
+  const first = { messageId: 'msg_1.1700000001', timestamp: 1700000300, payload: 'body' };
+  const second = { messageId: 'msg_1', timestamp: 1700000001, payload: '1700000300.body' };
 
   it('gives two different messages the same signed bytes', () => {
     expect(

@@ -82,7 +82,7 @@ const SHA256_DIGEST_BYTES = 32;
  *
  * Set to MAX_SECRETS because it is the same quantity seen from the other end. A conforming sender
  * emits one entry per live key, so the longest legitimate list is the longest legitimate rotation,
- * which this package already caps at 16. Anything past that is refused rather than weighed, and a
+ * which this package already caps at 16. Anything past that is ignored rather than weighed, and a
  * valid signature sitting beyond the cap is not found - a trade-off, and one no real sender meets.
  */
 export const MAX_SIGNATURE_ENTRIES = MAX_SECRETS;

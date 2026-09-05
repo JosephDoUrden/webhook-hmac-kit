@@ -54,6 +54,11 @@ export async function verifyWebhook(options: VerifyWebhookOptions): Promise<Veri
   //    verification is in the Web Crypto editor's draft only, it has no web-platform-test, and Node
   //    shipped a plain memcmp until March 2026 (CVE-2026-21713). Three signs per secret and no
   //    verify, which is what the rotation test asserts on.
+  //
+  //    Per-comparison blinding, where verifyStandardWebhooks blinds once for the whole request.
+  //    Deliberate: this scheme carries exactly one presented digest, so there is no s * e term for
+  //    a batch to collapse, and switching would change the 3-signs-per-secret cost that
+  //    rotation.test.ts pins and the README states, for nothing.
   const canonical = buildCanonicalBytes(options.timestamp, options.nonce, options.payload);
   let matches = 0;
   for (const secret of secrets) {

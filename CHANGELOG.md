@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `signStandardWebhooks`, `verifyStandardWebhooks` and `parseStandardWebhooksSecret`,
   exported from the package entry point with `StandardWebhooksSecret`,
   `StandardWebhooksHeaders` and the two option types. Zero new dependencies. Nothing
-  about the `v2` scheme changes, and the adapters are untouched: there is no
+  about the `v2` wire format changes, and the adapters are untouched: there is no
   `standardWebhooks` flag on them, because one option carrying both secret encodings
   would make the same configured string a different key depending on a boolean, and
   their scheme has no field that can carry replay protection.
