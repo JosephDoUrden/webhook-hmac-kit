@@ -8,6 +8,9 @@
  * lower-case hex digest.
  *   v2={hex}
  *
+ * The digest is lower-case hex and nothing else is accepted, so a sender written in another
+ * language must format it with %x rather than %X.
+ *
  * A payload that is not UTF-8 text has no string form, so the last vector carries its bytes and no
  * `canonical`. Its canonical value is the prefix as UTF-8 followed by those bytes, unchanged.
  *

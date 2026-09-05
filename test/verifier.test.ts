@@ -232,7 +232,7 @@ describe('verifyWebhook', () => {
       }
     });
 
-    it('accepts upper-case hex, which a sender formatting with %X will send', async () => {
+    it('rejects upper-case hex: one digest has one spelling on the wire', async () => {
       await expect(
         verifyWebhook({
           secrets: TEST_SECRET,
@@ -241,7 +241,22 @@ describe('verifyWebhook', () => {
           timestamp: firstVector.timestamp,
           nonce: firstVector.nonce,
         }),
-      ).resolves.toEqual({ valid: true });
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
+    it('rejects a digest with a single upper-case character in it', async () => {
+      const mixed = firstVector.signature.replace(/[a-f]/, (c) => c.toUpperCase());
+      expect(mixed).not.toBe(firstVector.signature);
+
+      await expect(
+        verifyWebhook({
+          secrets: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: mixed,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
     });
 
     it('rejects a folded duplicate header value ("sigA, sigB")', async () => {
