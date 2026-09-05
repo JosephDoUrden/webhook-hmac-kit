@@ -117,7 +117,7 @@ describe('NestJS WebhookGuard', () => {
     }
   });
 
-  it('throws HttpException(400) for expired timestamp', async () => {
+  it('throws HttpException(401) for expired timestamp', async () => {
     vi.setSystemTime((TEST_TIMESTAMP + 600) * 1000);
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
@@ -134,11 +134,12 @@ describe('NestJS WebhookGuard', () => {
       expect.fail('Should have thrown');
     } catch (e) {
       const err = e as HttpException;
-      expect(err.getStatus()).toBe(400);
+      expect(err.getStatus()).toBe(401);
+      expect(err.getResponse()).toEqual({ error: 'Webhook verification failed' });
     }
   });
 
-  it('throws HttpException(409) for replayed nonce', async () => {
+  it('throws HttpException(401) for replayed nonce', async () => {
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
@@ -157,8 +158,42 @@ describe('NestJS WebhookGuard', () => {
       expect.fail('Should have thrown');
     } catch (e) {
       const err = e as HttpException;
-      expect(err.getStatus()).toBe(409);
+      expect(err.getStatus()).toBe(401);
+      expect(err.getResponse()).toEqual({ error: 'Webhook verification failed' });
     }
+  });
+
+  it('uses rawBody when the framework provides it alongside a parsed body', async () => {
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const context = createMockContext({
+      body: JSON.parse(firstVector.payload),
+      rawBody: Buffer.from(firstVector.payload),
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+  });
+
+  it('rejects with a configuration error when only a parsed body is available', async () => {
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const context = createMockContext({
+      body: JSON.parse(firstVector.payload),
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
+    const failure = guard.canActivate(context);
+    await expect(failure).rejects.toThrow(/raw body/i);
+    await expect(failure).rejects.not.toBeInstanceOf(HttpException);
   });
 
   it('supports custom header names', async () => {

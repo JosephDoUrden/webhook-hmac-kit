@@ -1,6 +1,12 @@
 import { verifyWebhook } from '../verifier.js';
 import type { AdapterOptions } from './shared.js';
-import { extractHeaders, getHeaderNames, mapErrorToBody, mapErrorToStatus } from './shared.js';
+import {
+  extractHeaders,
+  getHeaderNames,
+  mapErrorToBody,
+  mapErrorToStatus,
+  resolveRawBody,
+} from './shared.js';
 
 export type { AdapterOptions } from './shared.js';
 
@@ -45,12 +51,11 @@ export function webhookPlugin(
         return;
       }
 
-      const raw = request.rawBody ?? request.body;
-      const payload = Buffer.isBuffer(raw)
-        ? raw.toString('utf-8')
-        : typeof raw === 'string'
-          ? raw
-          : JSON.stringify(raw);
+      // Fastify parses JSON by default, so `request.body` is usually an object. The raw bytes
+      // come from `request.rawBody` (fastify-raw-body or an equivalent content-type parser).
+      // Without either this throws a configuration error rather than verifying a re-serialized
+      // body.
+      const payload = resolveRawBody(request);
 
       try {
         await verifyWebhook({

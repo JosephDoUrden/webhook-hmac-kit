@@ -166,7 +166,7 @@ describe('Fastify webhookPlugin', () => {
     expect(reply.statusCode).toBe(401);
   });
 
-  it('returns 400 for expired timestamp', async () => {
+  it('returns 401 for expired timestamp', async () => {
     vi.setSystemTime((TEST_TIMESTAMP + 600) * 1000);
     const fastify = createMockFastify();
     const done = vi.fn();
@@ -188,10 +188,11 @@ describe('Fastify webhookPlugin', () => {
     ) => Promise<void>;
     await verifyHook(request, reply);
 
-    expect(reply.statusCode).toBe(400);
+    expect(reply.statusCode).toBe(401);
+    expect(reply.payload).toEqual({ error: 'Webhook verification failed' });
   });
 
-  it('returns 409 for replayed nonce', async () => {
+  it('returns 401 for replayed nonce', async () => {
     const fastify = createMockFastify();
     const done = vi.fn();
     webhookPlugin(fastify, { secrets: TEST_SECRET, nonceValidator: async () => false }, done);
@@ -212,7 +213,33 @@ describe('Fastify webhookPlugin', () => {
     ) => Promise<void>;
     await verifyHook(request, reply);
 
-    expect(reply.statusCode).toBe(409);
+    expect(reply.statusCode).toBe(401);
+    expect(reply.payload).toEqual({ error: 'Webhook verification failed' });
+  });
+
+  it('rejects with a configuration error when only a parsed body is available', async () => {
+    const fastify = createMockFastify();
+    const done = vi.fn();
+    webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
+
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const request = createMockRequest({
+      body: JSON.parse(firstVector.payload),
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const reply = createMockReply();
+
+    const verifyHook = fastify.decorations.verifyWebhook as (
+      req: typeof request,
+      rep: typeof reply,
+    ) => Promise<void>;
+    await expect(verifyHook(request, reply)).rejects.toThrow(/raw body/i);
+    expect(request.webhookVerified).toBe(false);
+    expect(reply.statusCode).toBe(0);
   });
 
   it('supports custom header names', async () => {

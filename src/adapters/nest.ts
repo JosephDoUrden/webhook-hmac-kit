@@ -1,6 +1,12 @@
 import { verifyWebhook } from '../verifier.js';
 import type { AdapterOptions } from './shared.js';
-import { extractHeaders, getHeaderNames, mapErrorToStatus } from './shared.js';
+import {
+  extractHeaders,
+  getHeaderNames,
+  mapErrorToBody,
+  mapErrorToStatus,
+  resolveRawBody,
+} from './shared.js';
 
 export type { AdapterOptions } from './shared.js';
 
@@ -16,7 +22,9 @@ interface HttpContext {
 
 interface WebhookRequest {
   headers: Record<string, string | string[] | undefined>;
-  body: Buffer | string | unknown;
+  body: unknown;
+  /** Populated by NestJS when the app is created with `rawBody: true`. */
+  rawBody?: Buffer | string | undefined;
   webhookVerified?: boolean;
 }
 
@@ -59,12 +67,10 @@ export class WebhookGuard {
       throw new HttpException({ error: `Missing required header: ${headerResult.missing}` }, 400);
     }
 
-    const raw = request.body;
-    const payload = Buffer.isBuffer(raw)
-      ? raw.toString('utf-8')
-      : typeof raw === 'string'
-        ? raw
-        : JSON.stringify(raw);
+    // Create the app with `NestFactory.create(AppModule, { rawBody: true })` so `request.rawBody`
+    // carries the exact bytes. A parsed body with no rawBody is a configuration error and is
+    // thrown as a plain Error, not an HttpException, so it surfaces as a 500 in the logs.
+    const payload = resolveRawBody(request);
 
     try {
       await verifyWebhook({
@@ -82,9 +88,7 @@ export class WebhookGuard {
       if (this.options.onError) {
         this.options.onError(error);
       }
-      const status = mapErrorToStatus(error);
-      const message = error instanceof Error ? error.message : 'Internal server error';
-      throw new HttpException({ error: message }, status);
+      throw new HttpException(mapErrorToBody(error), mapErrorToStatus(error));
     }
   }
 }

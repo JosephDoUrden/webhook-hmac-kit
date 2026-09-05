@@ -1,11 +1,17 @@
 import { verifyWebhook } from '../verifier.js';
 import type { AdapterOptions } from './shared.js';
-import { extractHeaders, getHeaderNames, mapErrorToBody, mapErrorToStatus } from './shared.js';
+import {
+  extractHeaders,
+  getHeaderNames,
+  mapErrorToBody,
+  mapErrorToStatus,
+  resolveRawBody,
+} from './shared.js';
 
 export type { AdapterOptions } from './shared.js';
 
 interface ExpressRequest {
-  body: Buffer | string;
+  body: unknown;
   headers: Record<string, string | string[] | undefined>;
   webhookVerified?: boolean;
 }
@@ -19,6 +25,11 @@ type NextFunction = (err?: unknown) => void;
 
 type ExpressMiddleware = (req: ExpressRequest, res: ExpressResponse, next: NextFunction) => void;
 
+/**
+ * Mount after `express.raw()` with a `type` that matches the webhook content type, or any parser
+ * that leaves `req.body` as a Buffer or string. If a JSON parser has already run on the route the
+ * middleware throws a configuration error rather than verifying a re-serialized body.
+ */
 export function webhookVerifier(options: AdapterOptions): ExpressMiddleware {
   const headerNames = getHeaderNames(options);
 
@@ -34,7 +45,8 @@ export function webhookVerifier(options: AdapterOptions): ExpressMiddleware {
       return;
     }
 
-    const payload = Buffer.isBuffer(req.body) ? req.body.toString('utf-8') : req.body;
+    // Throws synchronously on a parsed body: a misconfigured route, not a bad request.
+    const payload = resolveRawBody(req);
 
     verifyWebhook({
       secrets: options.secrets,

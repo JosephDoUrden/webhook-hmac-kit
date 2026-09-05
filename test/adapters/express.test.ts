@@ -1,5 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { webhookVerifier } from '../../src/adapters/express.js';
+import { WebhookNonceError, WebhookTimestampError } from '../../src/errors.js';
 import { signWebhook } from '../../src/signer.js';
 import { TEST_SECRET, TEST_TIMESTAMP } from '../vectors.js';
 
@@ -148,14 +149,11 @@ describe('Express webhookVerifier middleware', () => {
     webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
 
     await vi.waitFor(() => expect(res.statusCode).toBe(401));
-    expect(res.body).toEqual({
-      error: 'Webhook signature is invalid',
-      code: 'WEBHOOK_SIGNATURE_INVALID',
-    });
+    expect(res.body).toEqual({ error: 'Webhook verification failed' });
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('returns 400 for expired timestamp', async () => {
+  it('returns 401 for expired timestamp, with the detail only in onError', async () => {
     vi.setSystemTime((TEST_TIMESTAMP + 600) * 1000);
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
@@ -167,17 +165,36 @@ describe('Express webhookVerifier middleware', () => {
     });
     const res = createMockRes();
     const next = vi.fn();
+    const onError = vi.fn();
 
-    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
+    webhookVerifier({ secrets: TEST_SECRET, onError })(req, res, next);
 
-    await vi.waitFor(() => expect(res.statusCode).toBe(400));
-    expect(res.body).toEqual({
-      error: 'Webhook timestamp has expired',
-      code: 'WEBHOOK_TIMESTAMP_EXPIRED',
-    });
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+    expect(res.body).toEqual({ error: 'Webhook verification failed' });
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(WebhookTimestampError);
   });
 
-  it('returns 409 for replayed nonce', async () => {
+  it('returns 401 for a non-integer timestamp header', async () => {
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const req = createMockReq({
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': `${TEST_TIMESTAMP}.5`,
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const res = createMockRes();
+    const next = vi.fn();
+    const onError = vi.fn();
+
+    webhookVerifier({ secrets: TEST_SECRET, onError })(req, res, next);
+
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(WebhookTimestampError);
+    expect(next).not.toHaveBeenCalled();
+  });
+
+  it('returns 401 for replayed nonce, with the detail only in onError', async () => {
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
@@ -189,16 +206,57 @@ describe('Express webhookVerifier middleware', () => {
     const res = createMockRes();
     const next = vi.fn();
 
+    const onError = vi.fn();
+
     webhookVerifier({
       secrets: TEST_SECRET,
       nonceValidator: async () => false,
+      onError,
     })(req, res, next);
 
-    await vi.waitFor(() => expect(res.statusCode).toBe(409));
-    expect(res.body).toEqual({
-      error: 'Webhook nonce has been replayed',
-      code: 'WEBHOOK_NONCE_REPLAYED',
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+    expect(res.body).toEqual({ error: 'Webhook verification failed' });
+    expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(WebhookNonceError);
+  });
+
+  it('accepts a signature made with a retiring secret', async () => {
+    const signature = signWebhook({
+      secrets: 'whsec_old',
+      payload: firstVector.payload,
+      timestamp: TEST_TIMESTAMP,
+      nonce: firstVector.nonce,
+    }).signature;
+    const req = createMockReq({
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
     });
+    const res = createMockRes();
+    const next = vi.fn();
+
+    webhookVerifier({ secrets: [TEST_SECRET, 'whsec_old'] })(req, res, next);
+
+    await vi.waitFor(() => expect(next).toHaveBeenCalled());
+    expect(req.webhookVerified).toBe(true);
+  });
+
+  it('throws a configuration error when the body has already been parsed', () => {
+    const req = createMockReq({
+      body: JSON.parse(firstVector.payload),
+      headers: {
+        'x-webhook-signature': `v2=${'a'.repeat(64)}`,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const res = createMockRes();
+    const next = vi.fn();
+
+    expect(() => webhookVerifier({ secrets: TEST_SECRET })(req, res, next)).toThrow(/raw body/i);
+    expect(next).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(0);
   });
 
   it('supports custom header names', async () => {

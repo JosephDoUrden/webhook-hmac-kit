@@ -5,6 +5,16 @@ export type WebhookErrorCode =
   | 'WEBHOOK_NONCE_REPLAYED'
   | 'WEBHOOK_NONCE_INVALID';
 
+/**
+ * Base class for every verification failure. The subclasses say which check failed, and that
+ * detail is for logs and metrics on the receiving side.
+ *
+ * Do not let the distinction reach the wire. If an HTTP handler answers 400 for an expired
+ * timestamp or 409 for a replayed nonce, an unauthenticated caller learns that its signature was
+ * accepted and only a later check failed, which confirms the shared secret is still live. Map every
+ * WebhookError to the same status (401) and the same body; the shipped adapters do this and expose
+ * the specific error through their `onError` option instead.
+ */
 export class WebhookError extends Error {
   readonly code: WebhookErrorCode;
 
