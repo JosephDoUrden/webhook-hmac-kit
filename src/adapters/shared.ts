@@ -113,6 +113,24 @@ export function resolveRawBody(request: { rawBody?: unknown; body?: unknown }): 
 }
 
 /**
+ * Hands the failure to the integrator's onError, if there is one.
+ *
+ * onError is somebody else's code and may throw. If it does, the request still has to be answered:
+ * a logger that is misconfigured must not cost the caller its response, leave the socket hanging,
+ * or replace the 401 with whatever the logger threw.
+ */
+export function reportError(options: AdapterOptions, error: unknown): void {
+  if (!options.onError) {
+    return;
+  }
+  try {
+    options.onError(error);
+  } catch {
+    // Nowhere left to report it: the reporter is what failed.
+  }
+}
+
+/**
  * Every verification failure is a 401. Distinct status codes (400 for an expired timestamp, 409 for
  * a replayed nonce) would tell an unauthenticated caller that its signature was accepted and only
  * a later check failed, which confirms the secret is still live. The reason is available through

@@ -5,6 +5,7 @@ import {
   getHeaderNames,
   mapErrorToBody,
   mapErrorToStatus,
+  reportError,
   resolveRawBody,
 } from './shared.js';
 
@@ -69,9 +70,7 @@ export function webhookPlugin(
         request.webhookVerified = true;
         return undefined;
       } catch (error: unknown) {
-        if (options.onError) {
-          options.onError(error);
-        }
+        reportError(options, error);
         const status = mapErrorToStatus(error);
         const body = mapErrorToBody(error);
         return reply.code(status).send(body);

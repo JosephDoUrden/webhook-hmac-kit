@@ -401,3 +401,40 @@ describe('Fastify webhookPlugin header handling', () => {
     expect(request.webhookVerified).toBe(false);
   });
 });
+
+describe('Fastify webhookPlugin failure isolation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('still answers when onError itself throws', async () => {
+    const onError = vi.fn(() => {
+      throw new Error('the logger blew up');
+    });
+    const fastify = createMockFastify();
+    webhookPlugin(fastify, { secrets: TEST_SECRET, onError }, vi.fn());
+
+    const request = createMockRequest({
+      headers: {
+        'x-webhook-signature': `v2=${'a'.repeat(64)}`,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const reply = createMockReply();
+
+    const verifyHook = fastify.decorations.verifyWebhook as (
+      req: typeof request,
+      rep: typeof reply,
+    ) => Promise<unknown>;
+
+    await expect(verifyHook(request, reply)).resolves.toBe(reply);
+    expect(reply.statusCode).toBe(401);
+    expect(reply.payload).toEqual({ error: 'Webhook verification failed' });
+  });
+});

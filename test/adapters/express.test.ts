@@ -456,3 +456,65 @@ describe('Express webhookVerifier header handling', () => {
     expect(next).not.toHaveBeenCalled();
   });
 });
+
+// Real timers here: an unhandled rejection is only reported on a later tick, and there is no way
+// to wait for one that a fake clock has swallowed.
+describe('Express webhookVerifier failure isolation', () => {
+  const timestamp = Math.floor(Date.now() / 1000);
+
+  function validHeaders() {
+    return {
+      'x-webhook-signature': signPayload(firstVector.payload, timestamp, firstVector.nonce),
+      'x-webhook-timestamp': String(timestamp),
+      'x-webhook-nonce': firstVector.nonce,
+    };
+  }
+
+  it('does not treat a throw from the downstream handler as a verification failure', async () => {
+    const downstreamError = new Error('the route handler blew up');
+    const req = createMockReq({ headers: validHeaders() });
+    const res = createMockRes();
+    const onError = vi.fn();
+    let calls = 0;
+    const next = vi.fn(() => {
+      calls += 1;
+      if (calls === 1) throw downstreamError;
+    });
+
+    webhookVerifier({ secrets: TEST_SECRET, onError })(req, res, next);
+
+    await vi.waitFor(() => expect(next).toHaveBeenCalledTimes(2));
+    expect(next.mock.calls[1]?.[0]).toBe(downstreamError);
+    expect(onError).not.toHaveBeenCalled();
+    expect(res.statusCode).toBe(0);
+    expect(res.body).toBeNull();
+  });
+
+  it('still answers when onError itself throws', async () => {
+    const unhandled = vi.fn();
+    process.on('unhandledRejection', unhandled);
+
+    const req = createMockReq({
+      headers: {
+        'x-webhook-signature': `v2=${'a'.repeat(64)}`,
+        'x-webhook-timestamp': String(timestamp),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const res = createMockRes();
+    const next = vi.fn();
+    const onError = vi.fn(() => {
+      throw new Error('the logger blew up');
+    });
+
+    webhookVerifier({ secrets: TEST_SECRET, onError })(req, res, next);
+
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+    expect(res.body).toEqual({ error: 'Webhook verification failed' });
+    expect(next).not.toHaveBeenCalled();
+
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    process.off('unhandledRejection', unhandled);
+    expect(unhandled).not.toHaveBeenCalled();
+  });
+});

@@ -285,3 +285,38 @@ describe('NestJS WebhookGuard header handling', () => {
     }
   });
 });
+
+describe('NestJS WebhookGuard failure isolation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('still throws the 401 when onError itself throws', async () => {
+    const onError = vi.fn(() => {
+      throw new Error('the logger blew up');
+    });
+    const context = createMockContext({
+      headers: {
+        'x-webhook-signature': `v2=${'a'.repeat(64)}`,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET, onError });
+
+    try {
+      await guard.canActivate(context);
+      expect.fail('Should have thrown');
+    } catch (e) {
+      const err = e as HttpException;
+      expect(err).toBeInstanceOf(HttpException);
+      expect(err.getStatus()).toBe(401);
+      expect(err.getResponse()).toEqual({ error: 'Webhook verification failed' });
+    }
+  });
+});

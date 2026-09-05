@@ -5,6 +5,7 @@ import {
   getHeaderNames,
   mapErrorToBody,
   mapErrorToStatus,
+  reportError,
   resolveRawBody,
 } from './shared.js';
 
@@ -82,9 +83,7 @@ export class WebhookGuard {
       request.webhookVerified = true;
       return true;
     } catch (error: unknown) {
-      if (this.options.onError) {
-        this.options.onError(error);
-      }
+      reportError(this.options, error);
       throw new HttpException(mapErrorToBody(error), mapErrorToStatus(error));
     }
   }

@@ -6,6 +6,7 @@ import {
   getHeaderNames,
   mapErrorToBody,
   mapErrorToStatus,
+  reportError,
   resolveRawBody,
 } from './shared.js';
 
@@ -36,9 +37,7 @@ export function webhookVerifier(options: AdapterOptions): ExpressMiddleware {
 
   return (req, res, next) => {
     const fail = (error: unknown) => {
-      if (options.onError) {
-        options.onError(error);
-      }
+      reportError(options, error);
       const status = mapErrorToStatus(error);
       const body = mapErrorToBody(error);
       res.status(status).json(body);
@@ -71,10 +70,15 @@ export function webhookVerifier(options: AdapterOptions): ExpressMiddleware {
       tolerance: options.tolerance,
       nonceValidator: options.nonceValidator,
     })
+      // Two arguments, not .then().catch(): next() runs the rest of the route, and with a single
+      // catch a synchronous throw from the handler downstream arrived here as though the webhook
+      // had failed to verify. onError was handed an unrelated error, a second response was written
+      // over the one the handler may already have sent, and Express's own error middleware never
+      // saw it. A throw from next() belongs on the error path Express provides for it.
       .then(() => {
         req.webhookVerified = true;
         next();
-      })
-      .catch(fail);
+      }, fail)
+      .catch(next);
   };
 }
