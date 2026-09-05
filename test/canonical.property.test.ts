@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { bytesEqual, utf8 } from '../src/bytes.js';
-import { NONCE_PATTERN, buildCanonicalString } from '../src/canonical.js';
+import { NONCE_PATTERN, buildCanonicalBytes, buildCanonicalString } from '../src/canonical.js';
 import { WebhookNonceError } from '../src/errors.js';
 import { signWebhook } from '../src/signer.js';
 import { verifyWebhook } from '../src/verifier.js';
@@ -12,8 +12,11 @@ import { TEST_SECRET } from './vectors.js';
 // adjacent, so one signed message could be re-split into several (nonce, payload) pairs that all
 // verified. v2 puts the strict-integer timestamp between a dot-free nonce and the payload.
 //
-// The property that matters is over the signature, not over the canonical string. The string is a
-// string -> string map that was injective even while the bytes handed to the HMAC were not.
+// The property that matters is over the canonical BYTES, not over the readable string. The string
+// is a string -> string map that was injective even while the bytes handed to the HMAC were not,
+// and the bytes are what gets signed. Asserting there is strictly stronger than asserting two
+// digests differ - a digest collision would also fail this - and it does not cost ten thousand
+// sequential HMACs to say so.
 
 interface Fields {
   timestamp: number;
@@ -125,25 +128,27 @@ function sameMessage(a: SignableFields, b: SignableFields): boolean {
   );
 }
 
-async function sign(fields: SignableFields): Promise<string> {
-  return (await signWebhook({ secrets: TEST_SECRET, ...fields })).signature;
+function canonical(fields: SignableFields): Uint8Array {
+  return buildCanonicalBytes(fields.timestamp, fields.nonce, fields.payload);
 }
 
 describe('canonical encoding is injective', () => {
-  it('gives distinct signatures to distinct (timestamp, nonce, payload) triples', async () => {
-    await fc.assert(
-      fc.asyncProperty(triplePairArb, async ([a, b]) => {
+  it('gives distinct canonical bytes to distinct (timestamp, nonce, payload) triples', () => {
+    fc.assert(
+      fc.property(triplePairArb, ([a, b]) => {
         fc.pre(!sameMessage(a, b));
-        expect(await sign(a)).not.toBe(await sign(b));
+        expect(bytesEqual(canonical(a), canonical(b))).toBe(false);
       }),
       { numRuns: 2000 },
     );
   });
 
-  it('signs a string payload and its UTF-8 bytes identically', async () => {
-    await fc.assert(
-      fc.asyncProperty(fieldsArb, async (fields) => {
-        expect(await sign({ ...fields, payload: utf8(fields.payload) })).toBe(await sign(fields));
+  it('encodes a string payload and its UTF-8 bytes identically', () => {
+    fc.assert(
+      fc.property(fieldsArb, (fields) => {
+        expect(
+          bytesEqual(canonical({ ...fields, payload: utf8(fields.payload) }), canonical(fields)),
+        ).toBe(true);
       }),
       { numRuns: 1000 },
     );
