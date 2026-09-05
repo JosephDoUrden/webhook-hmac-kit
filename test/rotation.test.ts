@@ -158,10 +158,10 @@ describe('secret rotation', () => {
     ).rejects.toThrow('secrets must not be empty');
   });
 
-  it('rejects a list containing an empty secret', async () => {
+  it('names the entry problem rather than calling the list empty', async () => {
     expect(() =>
       signWebhook({ secrets: [TEST_SECRET, ''], payload, timestamp: TEST_TIMESTAMP, nonce }),
-    ).toThrow('secrets must not be empty');
+    ).toThrow('each secret must be a non-empty string or byte array');
 
     await expect(
       verifyWebhook({
@@ -171,7 +171,17 @@ describe('secret rotation', () => {
         timestamp: TEST_TIMESTAMP,
         nonce,
       }),
-    ).rejects.toThrow('secrets must not be empty');
+    ).rejects.toThrow('each secret must be a non-empty string or byte array');
+  });
+
+  it('distinguishes an empty list from an unusable entry', () => {
+    expect(() => normalizeSecrets([])).toThrow('secrets must not be empty');
+    expect(() => normalizeSecrets([TEST_SECRET, new Uint8Array(0)])).toThrow(
+      'each secret must be a non-empty string or byte array',
+    );
+    expect(() => normalizeSecrets([TEST_SECRET, 42 as unknown as string])).toThrow(
+      'each secret must be a non-empty string or byte array',
+    );
   });
 });
 

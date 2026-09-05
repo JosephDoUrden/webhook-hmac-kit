@@ -363,7 +363,7 @@ describe('verifyWebhook', () => {
           timestamp: firstVector.timestamp,
           nonce: firstVector.nonce,
         }),
-      ).rejects.toThrow('secrets must not be empty');
+      ).rejects.toThrow('each secret must be a non-empty string or byte array');
     });
 
     it('rejects NaN timestamp', async () => {

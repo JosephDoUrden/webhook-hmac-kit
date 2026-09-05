@@ -17,8 +17,13 @@ export const MAX_SECRETS = 16;
 
 export function normalizeSecrets(secrets: WebhookSecret | WebhookSecret[]): [Buffer, ...Buffer[]] {
   const list = Array.isArray(secrets) ? secrets : [secrets];
-  if (list.length === 0 || list.some((s) => !isUsableSecret(s))) {
+  // Two different mistakes: no secrets configured at all, and a list with a blank or wrong-typed
+  // entry in it. One message for both sent people looking at the wrong thing.
+  if (list.length === 0) {
     throw new Error('secrets must not be empty');
+  }
+  if (list.some((s) => !isUsableSecret(s))) {
+    throw new Error('each secret must be a non-empty string or byte array');
   }
 
   // Every entry costs an HMAC on every request, whether or not an earlier one matched, so a

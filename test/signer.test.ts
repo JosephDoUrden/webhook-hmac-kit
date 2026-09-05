@@ -33,7 +33,7 @@ describe('signWebhook', () => {
         timestamp: 1000,
         nonce: 'n',
       }),
-    ).toThrow('secrets must not be empty');
+    ).toThrow('each secret must be a non-empty string or byte array');
   });
 
   it('rejects a nonce outside the v2 grammar', () => {
