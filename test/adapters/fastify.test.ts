@@ -217,10 +217,11 @@ describe('Fastify webhookPlugin', () => {
     expect(reply.payload).toEqual({ error: 'Webhook verification failed' });
   });
 
-  it('rejects with a configuration error when only a parsed body is available', async () => {
+  it('reports a parsed body as a configuration error, through onError', async () => {
+    const onError = vi.fn();
     const fastify = createMockFastify();
     const done = vi.fn();
-    webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
+    webhookPlugin(fastify, { secrets: TEST_SECRET, onError }, done);
 
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
@@ -236,10 +237,13 @@ describe('Fastify webhookPlugin', () => {
     const verifyHook = fastify.decorations.verifyWebhook as (
       req: typeof request,
       rep: typeof reply,
-    ) => Promise<void>;
-    await expect(verifyHook(request, reply)).rejects.toThrow(/raw body/i);
+    ) => Promise<unknown>;
+
+    await expect(verifyHook(request, reply)).resolves.toBe(reply);
+    expect(reply.statusCode).toBe(500);
+    expect(reply.payload).toEqual({ error: 'Internal server error' });
+    expect(String(onError.mock.calls[0]?.[0])).toMatch(/raw body/i);
     expect(request.webhookVerified).toBe(false);
-    expect(reply.statusCode).toBe(0);
   });
 
   it('supports custom header names', async () => {

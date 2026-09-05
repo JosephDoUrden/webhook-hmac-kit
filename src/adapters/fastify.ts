@@ -51,13 +51,14 @@ export function webhookPlugin(
         return reply.code(400).send({ error: headerResult.invalid });
       }
 
-      // Fastify parses JSON by default, so `request.body` is usually an object. The raw bytes
-      // come from `request.rawBody` (fastify-raw-body or an equivalent content-type parser).
-      // Without either this throws a configuration error rather than verifying a re-serialized
-      // body.
-      const payload = resolveRawBody(request);
-
       try {
+        // Fastify parses JSON by default, so `request.body` is usually an object. The raw bytes
+        // come from `request.rawBody` (fastify-raw-body or an equivalent content-type parser).
+        // Without either this throws a configuration error rather than verifying a re-serialized
+        // body. It is inside the try so the integrator hears about it through onError and the
+        // caller gets the same generic answer as every other failure, exactly as in Express.
+        const payload = resolveRawBody(request);
+
         await verifyWebhook({
           secrets: options.secrets,
           payload,

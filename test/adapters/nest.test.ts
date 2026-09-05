@@ -179,7 +179,8 @@ describe('NestJS WebhookGuard', () => {
     await expect(guard.canActivate(context)).resolves.toBe(true);
   });
 
-  it('rejects with a configuration error when only a parsed body is available', async () => {
+  it('reports a parsed body as a configuration error, through onError', async () => {
+    const onError = vi.fn();
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       body: JSON.parse(firstVector.payload),
@@ -190,10 +191,19 @@ describe('NestJS WebhookGuard', () => {
       },
     });
 
-    const guard = new WebhookGuard({ secrets: TEST_SECRET });
-    const failure = guard.canActivate(context);
-    await expect(failure).rejects.toThrow(/raw body/i);
-    await expect(failure).rejects.not.toBeInstanceOf(HttpException);
+    const guard = new WebhookGuard({ secrets: TEST_SECRET, onError });
+
+    try {
+      await guard.canActivate(context);
+      expect.fail('Should have thrown');
+    } catch (e) {
+      const err = e as HttpException;
+      expect(err).toBeInstanceOf(HttpException);
+      expect(err.getStatus()).toBe(500);
+      expect(err.getResponse()).toEqual({ error: 'Internal server error' });
+    }
+    expect(String(onError.mock.calls[0]?.[0])).toMatch(/raw body/i);
+    expect(context.request.webhookVerified).toBeUndefined();
   });
 
   it('supports custom header names', async () => {

@@ -65,12 +65,13 @@ export class WebhookGuard {
       throw new HttpException({ error: headerResult.invalid }, 400);
     }
 
-    // Create the app with `NestFactory.create(AppModule, { rawBody: true })` so `request.rawBody`
-    // carries the exact bytes. A parsed body with no rawBody is a configuration error and is
-    // thrown as a plain Error, not an HttpException, so it surfaces as a 500 in the logs.
-    const payload = resolveRawBody(request);
-
     try {
+      // Create the app with `NestFactory.create(AppModule, { rawBody: true })` so `request.rawBody`
+      // carries the exact bytes. A parsed body with no rawBody is a configuration error. It is
+      // inside the try so the integrator hears about it through onError and it arrives as an
+      // HttpException carrying its own 500, the same shape as every other failure here.
+      const payload = resolveRawBody(request);
+
       await verifyWebhook({
         secrets: this.options.secrets,
         payload,
