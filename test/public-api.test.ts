@@ -58,10 +58,13 @@ describe('public surface', () => {
     expect(Object.keys(api)).not.toContain('buildStandardWebhooksBytes');
   });
 
-  // The two schemes are told apart by their types as well as their functions. Passing a whsec_
-  // string where a raw secret belongs, or the other way round, is a different key rather than an
-  // error, so the type names are part of what stops it.
-  it('keeps the two secret types apart on the type surface', () => {
+  // StandardWebhooksSecret and WebhookSecret are both `string | Uint8Array`, so they are the same
+  // type and the compiler will not stop anyone swapping one for the other. The separation is
+  // documentary: two names, each with the encoding written on it, so the reader of a call site can
+  // see which meaning is in play. That matters because passing a whsec_ string where a raw secret
+  // belongs is not an error at all - it is a different key, silently. Nothing here can enforce it,
+  // and pretending otherwise would be worse than saying so.
+  it('names the two secret types separately, without being able to enforce the distinction', () => {
     const swSecret: api.StandardWebhooksSecret = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw';
     const headers: api.StandardWebhooksHeaders = {
       'webhook-id': 'msg_1',
@@ -71,6 +74,10 @@ describe('public surface', () => {
 
     expect(api.parseStandardWebhooksSecret(swSecret)).toHaveLength(24);
     expect(headers['webhook-id']).toBe('msg_1');
+
+    // The same string through the two APIs, to show what the naming is up against: 24 base64-
+    // decoded bytes on one side, 38 UTF-8 bytes on the other, no error either way.
+    expect(api.normalizeSecrets(swSecret)[0]).toHaveLength(swSecret.length);
   });
 
   // Nothing on the public surface asks for or hands back a Buffer. The digest a caller parses out
