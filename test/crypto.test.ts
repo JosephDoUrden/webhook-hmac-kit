@@ -248,7 +248,7 @@ describe('blindMany', () => {
 
   const digest = (fill: number) => new Uint8Array(32).fill(fill);
 
-  it('returns one 32-byte value per input, in order', async () => {
+  it('returns one 32-byte value per input', async () => {
     const blinded = await blindMany([digest(1), digest(2), digest(3)]);
 
     expect(blinded).toHaveLength(3);
@@ -256,6 +256,20 @@ describe('blindMany', () => {
       expect(value.constructor).toBe(Uint8Array);
       expect(value).toHaveLength(32);
     }
+  });
+
+  // "In order" is the whole contract, because the verifier slices the result back into the expected
+  // MACs and the presented digests by position. A Promise.all that resolved out of order, or a map
+  // that dropped an entry, would silently pair the wrong values together - and every one of them
+  // would still be 32 bytes, so nothing else here would notice.
+  //
+  // The input repeats its first value rather than its outer ones: [d1, d1, d2] is asymmetric, so a
+  // reversed result fails the first assertion. [d1, d2, d1] is a palindrome and would not.
+  it('keeps each blinded value at its input position', async () => {
+    const [first, second, third] = await blindMany([digest(1), digest(1), digest(2)]);
+
+    expect(blindedFoldEqual(first as Uint8Array, second as Uint8Array)).toBe(true);
+    expect(blindedFoldEqual(second as Uint8Array, third as Uint8Array)).toBe(false);
   });
 
   // The whole point of the primitive: one key covers the whole batch, so a verify that compares s
