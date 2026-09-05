@@ -9,9 +9,12 @@ import {
 import { vectors } from './vectors.js';
 
 describe('buildCanonicalString', () => {
+  // A byte payload has no string form, so the vector that carries one has no `canonical` either.
   for (const vector of vectors) {
+    if (typeof vector.payload !== 'string') continue;
+
     it(`produces correct canonical string for: ${vector.name}`, () => {
-      const result = buildCanonicalString(vector.timestamp, vector.nonce, vector.payload);
+      const result = buildCanonicalString(vector.timestamp, vector.nonce, vector.payload as string);
       expect(result).toBe(vector.canonical);
     });
   }
@@ -90,9 +93,15 @@ describe('isValidNonce', () => {
 
 describe('buildCanonicalBytes', () => {
   for (const vector of vectors) {
-    it(`matches the canonical string for: ${vector.name}`, () => {
+    it(`matches the canonical value for: ${vector.name}`, () => {
+      const prefix = Buffer.from(`v2.${vector.timestamp}.${vector.nonce}.`, 'utf8');
+      const expected =
+        vector.canonical === undefined
+          ? Buffer.concat([prefix, Buffer.from(vector.payload as Uint8Array)])
+          : Buffer.from(vector.canonical, 'utf8');
+
       const result = buildCanonicalBytes(vector.timestamp, vector.nonce, vector.payload);
-      expect(result.equals(Buffer.from(vector.canonical, 'utf8'))).toBe(true);
+      expect(result.equals(expected)).toBe(true);
     });
   }
 

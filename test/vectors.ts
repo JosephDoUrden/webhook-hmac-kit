@@ -8,9 +8,18 @@
  * lower-case hex digest.
  *   v2={hex}
  *
+ * A payload that is not UTF-8 text has no string form, so the last vector carries its bytes and no
+ * `canonical`. Its canonical value is the prefix as UTF-8 followed by those bytes, unchanged.
+ *
  * To regenerate a digest, run:
  *   node -e "const c=require('crypto'); const s='whsec_test_secret_key_1234567890';
  *   const canonical='v2.1700000000.nonce_abc123.{\"event\":\"payment.completed\",\"amount\":4999}';
+ *   console.log('v2='+c.createHmac('sha256',s).update(canonical).digest('hex'));"
+ *
+ * and for the byte vector:
+ *   node -e "const c=require('crypto'); const s='whsec_test_secret_key_1234567890';
+ *   const canonical=Buffer.concat([Buffer.from('v2.1700000000.nonce_bytes001.','utf8'),
+ *   Buffer.from([0x7b,0xff,0x7d])]);
  *   console.log('v2='+c.createHmac('sha256',s).update(canonical).digest('hex'));"
  */
 
@@ -19,10 +28,12 @@ export const TEST_TIMESTAMP = 1700000000;
 
 export interface TestVector {
   name: string;
-  payload: string;
+  /** What goes in as the payload. Bytes when the body is not UTF-8 text. */
+  payload: string | Uint8Array;
   timestamp: number;
   nonce: string;
-  canonical: string;
+  /** The readable canonical value. Only a text payload has one. */
+  canonical?: string;
   signature: string;
 }
 
@@ -74,5 +85,15 @@ export const vectors: TestVector[] = [
     nonce: 'nonce_dots001',
     canonical: 'v2.1700000000.nonce_dots001.1700000001.nonce_x.{"v":"2.0.1"}',
     signature: 'v2=c3d652678911bcd059a96e0bd3aa2bee700379649037718050486ad4896acd0b',
+  },
+  {
+    // 0xff is not valid UTF-8. Decoding this body to a string before signing it, as the adapters
+    // once did, turns it into the same three replacement bytes as 0xfe would, and the two bodies
+    // share a signature. The digest below is over the exact bytes.
+    name: 'byte payload that is not valid UTF-8',
+    payload: Uint8Array.from([0x7b, 0xff, 0x7d]),
+    timestamp: TEST_TIMESTAMP,
+    nonce: 'nonce_bytes001',
+    signature: 'v2=6bcc8aabb3021f06f7cb713985154d03ca3916082148444bd0cc75e3837cd430',
   },
 ];
