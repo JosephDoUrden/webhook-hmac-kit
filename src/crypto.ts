@@ -9,6 +9,13 @@
 
 const HMAC_SHA256 = { name: 'HMAC', hash: 'SHA-256' } as const;
 
+/** SHA-256 output size. Every MAC this module produces is exactly this long, and it is checked. */
+const DIGEST_BYTES = 32;
+
+const DEGENERATE_HMAC =
+  'Web Crypto returned an HMAC-SHA256 signature that is not 32 bytes, so this runtime cannot ' +
+  'verify webhooks correctly';
+
 /**
  * Web Crypto's types, derived from the global rather than named.
  *
@@ -181,7 +188,23 @@ export async function blindMany(digests: Uint8Array[]): Promise<Uint8Array[]> {
   const blinded = await Promise.all(
     digests.map((digest) => subtle.sign(HMAC_SHA256.name, blindingKey, bufferSource(digest))),
   );
-  return blinded.map((value) => new Uint8Array(value));
+
+  // Fail closed on a primitive that is not doing its job. The fold that follows says two values
+  // agree when it finds no difference between them, and it finds no difference between two empty
+  // runs — so a subtle.sign returning nothing made every blinded value identical and a forged
+  // signature verified. Nobody can make Web Crypto return empty buffers from outside, so this is
+  // not an attacker-reachable path; it is the direction the failure has to go in. A short or long
+  // digest is the same class of problem and is refused the same way.
+  //
+  // Not a WebhookError, deliberately: the adapters answer those with 401, which would tell a
+  // caller its signature was wrong when the truth is that this end cannot check signatures at all.
+  // Same reasoning as WebCryptoUnavailableError, which is also outside that hierarchy.
+  return blinded.map((value) => {
+    if (value.byteLength !== DIGEST_BYTES) {
+      throw new Error(`${DEGENERATE_HMAC} (got ${value.byteLength})`);
+    }
+    return new Uint8Array(value);
+  });
 }
 
 /**

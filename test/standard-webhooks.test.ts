@@ -816,3 +816,41 @@ describe('signing text and signing its bytes agree', () => {
     );
   });
 });
+
+describe('a degenerate Web Crypto', () => {
+  beforeEach(() => {
+    atVectorTime(VECTOR_A.timestamp);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  // Same guard as the v2 verifier, reached through the other scheme: with every blinded value the
+  // same empty run the fold agreed with itself and a wrong signature verified.
+  it('refuses to verify when sign returns the wrong number of bytes', async () => {
+    vi.spyOn(getSubtle(), 'sign').mockResolvedValue(new ArrayBuffer(0));
+
+    await expect(
+      verifyStandardWebhooks({
+        secrets: VECTOR_A.secret,
+        headers: headersFor(VECTOR_A, WRONG_KEY_SIGNATURE),
+        payload: VECTOR_A.payload,
+      }),
+    ).rejects.toThrow(/32 bytes/);
+  });
+
+  it('does not dress a broken receiver up as a rejected webhook', async () => {
+    vi.spyOn(getSubtle(), 'sign').mockResolvedValue(new ArrayBuffer(0));
+
+    const error = await verifyStandardWebhooks({
+      secrets: VECTOR_A.secret,
+      headers: headersFor(VECTOR_A),
+      payload: VECTOR_A.payload,
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(WebhookError);
+  });
+});

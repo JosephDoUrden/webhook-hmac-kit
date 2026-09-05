@@ -1,6 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { utf8 } from '../src/bytes.js';
-import { WebhookNonceError, WebhookSignatureError, WebhookTimestampError } from '../src/errors.js';
+import { getSubtle } from '../src/crypto.js';
+import {
+  WebhookError,
+  WebhookNonceError,
+  WebhookSignatureError,
+  WebhookTimestampError,
+} from '../src/errors.js';
 import { signWebhook } from '../src/signer.js';
 import { verifyWebhook } from '../src/verifier.js';
 import { TEST_SECRET, TEST_TIMESTAMP, vectors } from './vectors.js';
@@ -617,5 +623,60 @@ describe('byte-exact payloads and secrets', () => {
         nonce,
       }),
     ).rejects.toThrow(WebhookSignatureError);
+  });
+});
+
+/**
+ * The blind is what makes a leaky comparison safe, so it has to hold up when the primitive
+ * underneath it does not. A subtle.sign that returns nothing made every blinded value the same
+ * empty run, so the fold compared zero bytes and said they agreed - and a forged signature
+ * verified. Not attacker-reachable, since nobody can make Web Crypto return empty buffers, but
+ * "the primitive misbehaved so we accepted the request" is the wrong direction to fail in.
+ */
+describe('a degenerate Web Crypto', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['empty buffers', 0],
+    ['truncated buffers', 16],
+    ['oversized buffers', 64],
+  ])('refuses to verify anything when sign returns %s', async (_name, size) => {
+    vi.spyOn(getSubtle(), 'sign').mockResolvedValue(new ArrayBuffer(size));
+
+    await expect(
+      verifyWebhook({
+        secrets: TEST_SECRET,
+        payload: firstVector.payload,
+        signature: `v2=${'0'.repeat(64)}`,
+        timestamp: firstVector.timestamp,
+        nonce: firstVector.nonce,
+      }),
+    ).rejects.toThrow(/32 bytes/);
+  });
+
+  // A broken receiver is not a rejected webhook. If this were a WebhookError the adapters would
+  // answer 401, telling the caller its signature was wrong when the truth is that this end cannot
+  // check signatures at all.
+  it('reports a broken receiver rather than a failed verification', async () => {
+    vi.spyOn(getSubtle(), 'sign').mockResolvedValue(new ArrayBuffer(0));
+
+    const error = await verifyWebhook({
+      secrets: TEST_SECRET,
+      payload: firstVector.payload,
+      signature: firstVector.signature,
+      timestamp: firstVector.timestamp,
+      nonce: firstVector.nonce,
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(WebhookError);
   });
 });
