@@ -133,5 +133,11 @@ receiver is broken, not that a request failed to verify, so it maps to 500.
 - No built-in persistence layer for nonces.
 - Express, Fastify and NestJS adapters exist and ship under `./express`, `./fastify`,
   `./nest`: they are no longer future work.
-- Standard Webhooks compatibility and any non-injectivity work on top of it are future
-  work (targeted 2.1.0), not this version.
+- Standard Webhooks ships in 2.1.0 as `src/standard-webhooks.ts`, a separate scheme
+  rather than a mode of this one, and the adapters deliberately have no flag for it.
+  Its canonical encoding is not injective and cannot be made so without breaking
+  conformance, so `webhook-id` is never a trust boundary and there is no replay hook
+  keyed on it; a v2 secret must never be reused for it, because
+  `v2.{ts}.{nonce}.{payload}` and their message with id `v2` and payload
+  `{nonce}.{payload}` are the same bytes. Both are pinned by tests. Read the header
+  comment in that file before changing anything in it.

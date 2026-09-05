@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { bytesEqual, concat, fromHex, toHex, utf8 } from '../src/bytes.js';
+import { bytesEqual, concat, fromBase64, fromHex, toBase64, toHex, utf8 } from '../src/bytes.js';
 
 describe('utf8', () => {
   it('encodes ASCII one byte per character', () => {
@@ -113,5 +113,88 @@ describe('bytesEqual', () => {
 
   it('does not confuse a prefix with the whole', () => {
     expect(bytesEqual(Uint8Array.from([1, 2, 3]), Uint8Array.from([1, 2]))).toBe(false);
+  });
+});
+
+describe('toBase64', () => {
+  it('renders the standard alphabet with padding', () => {
+    expect(toBase64(utf8('a'))).toBe('YQ==');
+    expect(toBase64(utf8('ab'))).toBe('YWI=');
+    expect(toBase64(utf8('abc'))).toBe('YWJj');
+  });
+
+  it('renders no bytes as an empty string', () => {
+    expect(toBase64(new Uint8Array(0))).toBe('');
+  });
+
+  // Standard Webhooks signatures are standard-alphabet base64. URL-safe output would be silently
+  // unverifiable everywhere, because nothing in that ecosystem accepts '-' or '_'.
+  it('uses + and / rather than the URL-safe pair', () => {
+    expect(toBase64(Uint8Array.from([0xfb, 0xff, 0xbf]))).toBe('+/+/');
+  });
+
+  it('round-trips every byte value', () => {
+    const all = Uint8Array.from({ length: 256 }, (_, i) => i);
+    expect([...fromBase64(toBase64(all))]).toEqual([...all]);
+  });
+
+  it('reads through a byte offset rather than the whole backing buffer', () => {
+    const backing = Uint8Array.from([1, 2, 3, 4, 5]);
+    expect(toBase64(backing.subarray(1, 3))).toBe(toBase64(Uint8Array.from([2, 3])));
+  });
+});
+
+describe('fromBase64', () => {
+  it('decodes padded input', () => {
+    expect([...fromBase64('YWJj')]).toEqual([0x61, 0x62, 0x63]);
+    expect([...fromBase64('YQ==')]).toEqual([0x61]);
+    expect([...fromBase64('YWI=')]).toEqual([0x61, 0x62]);
+  });
+
+  // Python's b64decode(secret + '==') accepts an unpadded whsec_ secret and one of the upstream
+  // test fixtures depends on it, so a receiver that refused unpadded input would reject a secret
+  // a Python sender is happily signing with.
+  it('decodes unpadded input', () => {
+    expect([...fromBase64('YQ')]).toEqual([0x61]);
+    expect([...fromBase64('YWI')]).toEqual([0x61, 0x62]);
+  });
+
+  it('decodes an empty string to no bytes', () => {
+    expect(fromBase64('')).toHaveLength(0);
+  });
+
+  // Everything here decodes to something plausible under a lenient decoder. Buffer.from(s,'base64')
+  // returns bytes for all of them, which is how a mistyped secret becomes a key nobody chose.
+  it.each([
+    ['a URL-safe minus', 'YW-j'],
+    ['a URL-safe underscore', 'YW_j'],
+    ['a length that cannot be a group', 'YWJjY'],
+    ['padding in the middle', 'YQ==YQ=='],
+    ['three padding characters', 'YQ==='],
+    ['padding on a full group', 'YWJj='],
+    ['padding alone', '='],
+    ['inner whitespace', 'YW Jj'],
+    ['trailing whitespace', 'YWJj '],
+    ['a newline', 'YWJj\n'],
+    ['a character outside the alphabet', 'YW!j'],
+    ['a unicode digit that Number() would accept', '０１２３'],
+  ])('refuses %s', (_name, text) => {
+    expect(() => fromBase64(text)).toThrow(/base64/i);
+  });
+
+  // The bits below the last whole byte are not required to be zero, which is the one place this
+  // decoder is deliberately lenient. Both unpadded secrets in the upstream Python fixture set them,
+  // so refusing them would refuse a key a Python sender is signing with. 'YQ' and 'YR' therefore
+  // both mean 0x61; that is survivable because callers compare decoded bytes and nothing treats the
+  // base64 text as an identity.
+  it('keeps non-canonical trailing bits decodable', () => {
+    expect([...fromBase64('YR==')]).toEqual([0x61]);
+    expect([...fromBase64('YR')]).toEqual([0x61]);
+    expect(fromBase64('MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaS')).toHaveLength(23);
+  });
+
+  it('refuses anything that is not a string', () => {
+    expect(() => fromBase64(null as unknown as string)).toThrow(/base64/i);
+    expect(() => fromBase64(255 as unknown as string)).toThrow(/base64/i);
   });
 });

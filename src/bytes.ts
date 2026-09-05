@@ -107,3 +107,99 @@ export function bytesEqual(a: Uint8Array, b: Uint8Array): boolean {
   }
   return true;
 }
+
+/**
+ * Standard base64. Not the URL-safe variant: Standard Webhooks signatures and `whsec_` secrets are
+ * both spelled with '+' and '/', and nothing in that ecosystem accepts '-' or '_'.
+ */
+const BASE64_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+
+/** Character code to sextet, for the 128 codes that can appear. Everything else is -1. */
+const BASE64_VALUE: readonly number[] = (() => {
+  const table = new Array<number>(128).fill(-1);
+  for (let i = 0; i < BASE64_ALPHABET.length; i++) {
+    table[BASE64_ALPHABET.charCodeAt(i)] = i;
+  }
+  return table;
+})();
+
+/**
+ * The alphabet, then at most two padding characters, and nothing else.
+ *
+ * Padding is optional here because it is optional in practice: Python's b64decode(secret + '==')
+ * makes an unpadded `whsec_` secret work, and one of the upstream Standard Webhooks fixtures
+ * depends on that. The group-length and trailing-bit rules below are what keep it strict.
+ */
+const BASE64_GRAMMAR = /^[A-Za-z0-9+/]*={0,2}$/;
+
+/** One sextet of a 24-bit group, as its alphabet character. */
+function sextet(group: number, shift: number): string {
+  return BASE64_ALPHABET[(group >> shift) & 63] as string;
+}
+
+/** Standard-alphabet base64, padded to a multiple of four. */
+export function toBase64(bytes: Uint8Array): string {
+  let text = '';
+
+  for (let i = 0; i < bytes.length; i += 3) {
+    const remaining = bytes.length - i;
+    const group =
+      ((bytes[i] as number) << 16) |
+      ((remaining > 1 ? (bytes[i + 1] as number) : 0) << 8) |
+      (remaining > 2 ? (bytes[i + 2] as number) : 0);
+
+    text += sextet(group, 18) + sextet(group, 12);
+    text += remaining > 1 ? sextet(group, 6) : '=';
+    text += remaining > 2 ? sextet(group, 0) : '=';
+  }
+  return text;
+}
+
+/**
+ * Decodes standard-alphabet base64, or throws.
+ *
+ * Strict in the three ways the platform decoders are not, and each one has cost somebody a key.
+ *
+ * The alphabet is fixed, so a URL-safe secret is refused rather than quietly re-read: Python's
+ * b64decode with validate=False drops every out-of-alphabet character and hands back bytes, which
+ * is how 'not-a-base64-secret!' becomes a twelve-byte key nobody chose while Go and Rust reject
+ * the same string outright.
+ *
+ * The character count has to be a possible group length. A trailing character with no room to
+ * carry a byte ('YWJjY') means the value was truncated in transit, and a decoder that ignores it
+ * returns a prefix of the intended key.
+ *
+ * What it does not refuse is a non-zero bit below the last whole byte, and that is deliberate
+ * rather than an oversight. Both unpadded secrets in the upstream Python fixture carry them
+ * ('MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaS' ends 'S', low two bits 10), so the rule that keeps fromHex
+ * lower-case only would here reject a secret a Python sender is signing with. The cost is bounded:
+ * callers compare decoded bytes, so a non-canonical spelling of a digest decodes to the same
+ * value it would have anyway, and nothing here treats the base64 text as an identity.
+ */
+export function fromBase64(text: string): Uint8Array {
+  if (typeof text !== 'string' || !BASE64_GRAMMAR.test(text)) {
+    throw new TypeError('expected standard-alphabet base64 (A-Z a-z 0-9 + / and = padding)');
+  }
+
+  const padding = text.length - text.replace(/=+$/, '').length;
+  const body = text.slice(0, text.length - padding);
+  if (padding > 0 ? (body.length + padding) % 4 !== 0 : body.length % 4 === 1) {
+    throw new TypeError('base64 length is not a whole number of four-character groups');
+  }
+
+  const bytes = new Uint8Array((body.length * 6) >> 3);
+  let accumulator = 0;
+  let bits = 0;
+  let byteIndex = 0;
+
+  for (let i = 0; i < body.length; i++) {
+    accumulator = (accumulator << 6) | (BASE64_VALUE[body.charCodeAt(i)] as number);
+    bits += 6;
+    if (bits >= 8) {
+      bits -= 8;
+      bytes[byteIndex++] = (accumulator >> bits) & 0xff;
+    }
+  }
+
+  return bytes;
+}
