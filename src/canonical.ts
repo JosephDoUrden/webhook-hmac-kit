@@ -20,7 +20,7 @@ export function isValidNonce(nonce: string): boolean {
  * Everything up to and including the third dot: `v2.{timestamp}.{nonce}.`
  *
  * Throws on a malformed timestamp or nonce. Callers that need typed errors (the verifier) check
- * the fields first; this is the last line of defense.
+ * the fields first; this is the last line of defence.
  */
 function buildCanonicalPrefix(timestamp: number, nonce: string): string {
   if (!isValidTimestamp(timestamp)) {
