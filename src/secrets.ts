@@ -1,3 +1,4 @@
+import { bytesEqual, utf8 } from './bytes.js';
 import type { WebhookSecret } from './types.js';
 
 /**
@@ -8,14 +9,20 @@ import type { WebhookSecret } from './types.js';
  * while both are live, then drop the old one. Duplicates are collapsed and the list is capped at
  * MAX_SECRETS, which is more than any rotation needs.
  *
- * A string secret is UTF-8 encoded, which is what createHmac would have done with it anyway. A
- * secret that is not UTF-8 text — a decoded base64 key, say — has to arrive as bytes, because
- * UTF-8 encoding maps every unpaired surrogate onto the same three bytes and two different keys
- * would end up as one.
+ * A string secret is UTF-8 encoded, which is what any HMAC implementation would have done with it
+ * anyway. A secret that is not UTF-8 text — a decoded base64 key, say — has to arrive as bytes,
+ * because UTF-8 encoding maps every unpaired surrogate onto the same three bytes and two different
+ * keys would end up as one.
+ *
+ * An empty entry is refused here rather than at the crypto layer. Web Crypto rejects a zero-length
+ * key with a spec-mandated DataError, which is a true statement about nothing anybody configured
+ * on purpose; naming the mistake is more use than relaying it.
  */
 export const MAX_SECRETS = 16;
 
-export function normalizeSecrets(secrets: WebhookSecret | WebhookSecret[]): [Buffer, ...Buffer[]] {
+export function normalizeSecrets(
+  secrets: WebhookSecret | WebhookSecret[],
+): [Uint8Array, ...Uint8Array[]] {
   const list = Array.isArray(secrets) ? secrets : [secrets];
   // Two different mistakes: no secrets configured at all, and a list with a blank or wrong-typed
   // entry in it. One message for both sent people looking at the wrong thing.
@@ -29,22 +36,24 @@ export function normalizeSecrets(secrets: WebhookSecret | WebhookSecret[]): [Buf
   // Every entry costs an HMAC on every request, whether or not an earlier one matched, so a
   // repeated secret is paid for and buys nothing. Duplicates collapse and the cap applies to what
   // is left: one secret listed forty times is a mistake, not forty live keys.
-  const unique = new Map<string, Buffer>();
+  // Compared as bytes rather than through a string key. Sixteen entries of thirty-odd bytes is
+  // 120 comparisons at worst, and it keeps key material out of a second representation that the
+  // engine would keep alive for as long as the Map did.
+  const unique: Uint8Array[] = [];
   for (const secret of list) {
     const bytes = toKeyBytes(secret);
-    const seen = bytes.toString('base64');
-    if (!unique.has(seen)) {
-      unique.set(seen, bytes);
+    if (!unique.some((seen) => bytesEqual(seen, bytes))) {
+      unique.push(bytes);
     }
   }
 
-  if (unique.size > MAX_SECRETS) {
+  if (unique.length > MAX_SECRETS) {
     throw new Error(
-      `secrets must not contain more than ${MAX_SECRETS} distinct entries, got ${unique.size}`,
+      `secrets must not contain more than ${MAX_SECRETS} distinct entries, got ${unique.length}`,
     );
   }
 
-  return [...unique.values()] as [Buffer, ...Buffer[]];
+  return unique as [Uint8Array, ...Uint8Array[]];
 }
 
 function isUsableSecret(secret: WebhookSecret): boolean {
@@ -52,6 +61,8 @@ function isUsableSecret(secret: WebhookSecret): boolean {
   return secret instanceof Uint8Array && secret.length > 0;
 }
 
-function toKeyBytes(secret: WebhookSecret): Buffer {
-  return typeof secret === 'string' ? Buffer.from(secret, 'utf8') : Buffer.from(secret);
+function toKeyBytes(secret: WebhookSecret): Uint8Array {
+  // Bytes are copied: the caller keeps its array and may reuse or clear it, and a key that changed
+  // under the verifier between two candidates would make the result depend on the timing.
+  return typeof secret === 'string' ? utf8(secret) : Uint8Array.from(secret);
 }

@@ -14,7 +14,7 @@ export type { AdapterOptions } from './shared.js';
 interface FastifyRequest {
   headers: Record<string, string | string[] | undefined>;
   body: unknown;
-  rawBody?: Buffer | string | undefined;
+  rawBody?: Uint8Array | string | undefined;
   webhookVerified?: boolean;
 }
 

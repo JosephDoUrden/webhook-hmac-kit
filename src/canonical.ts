@@ -1,3 +1,4 @@
+import { concat, utf8 } from './bytes.js';
 import { SIGNATURE_VERSION } from './types.js';
 import type { WebhookPayload } from './types.js';
 
@@ -71,11 +72,11 @@ export function buildCanonicalBytes(
   timestamp: number,
   nonce: string,
   payload: WebhookPayload,
-): Buffer {
+): Uint8Array {
   const prefix = buildCanonicalPrefix(timestamp, nonce);
   if (typeof payload !== 'string' && !(payload instanceof Uint8Array)) {
     throw new TypeError('payload must be a string or a Uint8Array');
   }
-  const payloadBytes = typeof payload === 'string' ? Buffer.from(payload, 'utf8') : payload;
-  return Buffer.concat([Buffer.from(prefix, 'utf8'), payloadBytes]);
+  const payloadBytes = typeof payload === 'string' ? utf8(payload) : payload;
+  return concat(utf8(prefix), payloadBytes);
 }

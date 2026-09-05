@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { bytesEqual, concat, utf8 } from '../src/bytes.js';
 import {
   NONCE_PATTERN,
   buildCanonicalBytes,
@@ -94,32 +95,37 @@ describe('isValidNonce', () => {
 describe('buildCanonicalBytes', () => {
   for (const vector of vectors) {
     it(`matches the canonical value for: ${vector.name}`, () => {
-      const prefix = Buffer.from(`v2.${vector.timestamp}.${vector.nonce}.`, 'utf8');
+      const prefix = utf8(`v2.${vector.timestamp}.${vector.nonce}.`);
       const expected =
         vector.canonical === undefined
-          ? Buffer.concat([prefix, Buffer.from(vector.payload as Uint8Array)])
-          : Buffer.from(vector.canonical, 'utf8');
+          ? concat(prefix, vector.payload as Uint8Array)
+          : utf8(vector.canonical);
 
       const result = buildCanonicalBytes(vector.timestamp, vector.nonce, vector.payload);
-      expect(result.equals(expected)).toBe(true);
+      expect(bytesEqual(result, expected)).toBe(true);
     });
   }
 
+  // The bytes leaving this function are a plain Uint8Array, not a Buffer. A consumer on Deno,
+  // Bun or Workers has no Buffer to receive, and a Buffer here would have made the public type
+  // a lie the moment the library left Node.
+  it('returns a plain Uint8Array', () => {
+    expect(buildCanonicalBytes(1000, 'n', 'body').constructor).toBe(Uint8Array);
+  });
+
   it('encodes a string payload as UTF-8', () => {
-    expect(buildCanonicalBytes(1000, 'n', 'é🚀')).toEqual(Buffer.from('v2.1000.n.é🚀', 'utf8'));
+    expect(buildCanonicalBytes(1000, 'n', 'é🚀')).toEqual(utf8('v2.1000.n.é🚀'));
   });
 
   it('copies a byte payload verbatim, invalid UTF-8 included', () => {
     const payload = Uint8Array.from([0x7b, 0xff, 0x7d]);
-    expect(buildCanonicalBytes(1000, 'n', payload)).toEqual(
-      Buffer.concat([Buffer.from('v2.1000.n.', 'utf8'), payload]),
-    );
+    expect(buildCanonicalBytes(1000, 'n', payload)).toEqual(concat(utf8('v2.1000.n.'), payload));
   });
 
   it('keeps byte payloads distinct where UTF-8 decoding would collapse them', () => {
     const a = buildCanonicalBytes(1000, 'n', Uint8Array.from([0xff]));
     const b = buildCanonicalBytes(1000, 'n', Uint8Array.from([0xfe]));
-    expect(a.equals(b)).toBe(false);
+    expect(bytesEqual(a, b)).toBe(false);
   });
 
   it('validates the timestamp and nonce like the string builder', () => {

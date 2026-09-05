@@ -29,7 +29,7 @@ type ExpressMiddleware = (req: ExpressRequest, res: ExpressResponse, next: NextF
 
 /**
  * Mount after `express.raw()` with a `type` that matches the webhook content type, or any parser
- * that leaves `req.body` as a Buffer or string. If a JSON parser has already run on the route the
+ * that leaves `req.body` as bytes or a string. If a JSON parser has already run on the route the
  * middleware throws a configuration error rather than verifying a re-serialized body.
  */
 export function webhookVerifier(options: AdapterOptions): ExpressMiddleware {

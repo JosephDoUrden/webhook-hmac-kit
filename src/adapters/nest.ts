@@ -25,7 +25,7 @@ interface WebhookRequest {
   headers: Record<string, string | string[] | undefined>;
   body: unknown;
   /** Populated by NestJS when the app is created with `rawBody: true`. */
-  rawBody?: Buffer | string | undefined;
+  rawBody?: Uint8Array | string | undefined;
   webhookVerified?: boolean;
 }
 
