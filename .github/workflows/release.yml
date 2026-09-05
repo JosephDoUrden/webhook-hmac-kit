@@ -1,8 +1,9 @@
-# Publish from a GitHub release using npm provenance and OIDC trusted publishing.
+# Stage a release on npm from a GitHub release, with provenance, over OIDC trusted publishing.
 #
 # One-time setup required on npmjs.com:
 # 1. Settings → Publishing access → Trusted publisher: GitHub Actions
 # 2. Configure: owner = JosephDoUrden, repo = webhook-hmac-kit, workflow = release.yml
+#    Leave "Allow npm publish" unchecked: this workflow stages, a maintainer approves with 2FA.
 # 3. Verify npm CLI on runner is ≥11.5.1 (Node 24 ships npm 10.x, must upgrade; see runner setup step)
 #
 # npm trusted publishing via OIDC: https://docs.npmjs.com/trusted-publishers (accessed 05 Sep 2026)
@@ -94,6 +95,9 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: npm publish --dry-run --provenance
 
-      - name: Publish to npm
+      # Staged, not direct: the trusted publisher on npm only allows `npm stage publish`. The
+      # staged version goes live when a maintainer approves it with 2FA, either with
+      # `npm stage approve webhook-hmac-kit@<version>` or on npmjs.com. CI alone cannot publish.
+      - name: Stage the release on npm
         if: github.event_name == 'release'
-        run: npm publish --provenance --access public
+        run: npm stage publish --provenance --access public
