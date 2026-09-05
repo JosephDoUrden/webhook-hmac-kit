@@ -4,19 +4,14 @@
 [![npm downloads](https://img.shields.io/npm/dw/webhook-hmac-kit)](https://www.npmjs.com/package/webhook-hmac-kit)
 [![license](https://img.shields.io/npm/l/webhook-hmac-kit)](https://github.com/JosephDoUrden/webhook-hmac-kit/blob/main/LICENSE)
 
-Lightweight, production-ready toolkit for signing and verifying webhook requests using HMAC-SHA256.  
-Implements a Stripe-style security model with timestamp validation and replay protection.
+Sign and verify webhook requests with HMAC-SHA256: timestamp validation, nonce-based
+replay protection, secret rotation, and adapters for Express, Fastify and NestJS.
 
-> Correct webhook security. No magic. No footguns.  
-> Used in production systems handling financial & operational webhooks  
-> (Salesforce, Workato-style integrations)
+Runs on Web Crypto only, so it works the same way on Node, Cloudflare Workers, Deno and
+Bun with no bundler configuration and no runtime branch.
 
-- Zero runtime dependencies (Node.js built-in `crypto`)
-- Dual format: ESM + CJS, fully tree-shakeable
-- TypeScript-first with strict types
-- Constant-time signature comparison
-
----
+**2.0.0 is a breaking release.** The wire format changed. See [CHANGELOG.md](CHANGELOG.md)
+before upgrading in place — a v1 signature is refused outright, with no dual-accept window.
 
 ## Install
 
@@ -24,277 +19,246 @@ Implements a Stripe-style security model with timestamp validation and replay pr
 npm install webhook-hmac-kit
 ```
 
----
-
 ## Quick Start
 
 ```ts
 import { signWebhook, verifyWebhook } from 'webhook-hmac-kit';
-import crypto from 'node:crypto';
 
-// --- Sender side ---
-const rawBody = JSON.stringify({ event: 'payment.completed', amount: 4999 });
+// --- Sender ---
+const payload = JSON.stringify({ event: 'payment.completed', amount: 4999 });
 
-const { signature } = signWebhook({
-  secret: 'whsec_your_secret_key',
-  payload: rawBody,                  // exact bytes you send
+const { signature } = await signWebhook({
+  secrets: 'whsec_your_secret_key',
+  payload,                                   // exact bytes you are about to send
   timestamp: Math.floor(Date.now() / 1000),
   nonce: crypto.randomUUID(),
 });
 
-// Send signature, timestamp, and nonce as headers
+// Send signature, timestamp and nonce as headers alongside payload.
 
-// --- Receiver side ---
+// --- Receiver ---
 const result = await verifyWebhook({
-  secret: 'whsec_your_secret_key',
-  payload: rawBody,                  // exact bytes received
+  secrets: 'whsec_your_secret_key',
+  payload: req.body,                         // the exact bytes you received — see below
   signature: req.headers['x-webhook-signature'],
   timestamp: Number(req.headers['x-webhook-timestamp']),
   nonce: req.headers['x-webhook-nonce'],
 });
-
-// result.valid === true (throws on failure)
+// result.valid === true (throws a typed error on failure)
 ```
 
----
+Both functions are `async`. `signWebhook` validates its arguments synchronously and
+throws on a bad one immediately — only the HMAC step itself is a promise.
 
-## API Reference
+`payload` must be the exact bytes that went on the wire, not a re-serialised object.
+Configure your framework to hand you the raw body (`express.raw()`, Fastify's
+`rawBody`, NestJS's `rawBody: true`) and pass that straight through. Never
+`JSON.parse` then `JSON.stringify` before verifying — that changes key order and
+whitespace and breaks the signature. Verify first, parse second.
 
-### `signWebhook(options): SignWebhookResult`
+## Wire Format
 
-Synchronous. Computes an HMAC-SHA256 signature over a canonical string.
+The signed value is:
 
-| Parameter   | Type     | Required | Description                              |
-| ----------- | -------- | -------- | ---------------------------------------- |
-| `secret`    | `string` | Yes      | Shared secret key                        |
-| `payload`   | `string` | Yes      | Raw request body (exact bytes)           |
-| `timestamp` | `number` | Yes      | Unix timestamp (seconds)                 |
-| `nonce`     | `string` | Yes      | Unique request identifier                |
-| `version`   | `string` | No       | Canonical version prefix (default: `v1`) |
+```
+v2.{timestamp}.{nonce}.{payload}
+```
 
-Returns:
+built as bytes: the `v2.{timestamp}.{nonce}.` prefix is UTF-8 encoded, and the payload
+follows unchanged — as the exact bytes it arrived in if you passed a `Uint8Array`, or
+UTF-8 encoded if you passed a string. The signature header carries the version and a
+lower-case hex digest, nothing else:
+
+```
+x-webhook-signature: v2=<64 lower-case hex characters>
+```
+
+Upper-case hex is rejected. A sender in another language must format the digest with
+`%x`, not `%X`.
+
+- **Nonce** must match `^[A-Za-z0-9_-]{1,64}$`, checked before any HMAC work runs. Dot-free
+  by construction — the dot is the field delimiter, so a nonce that could contain one
+  would make the encoding ambiguous.
+- **Timestamp** is Unix seconds, a non-negative integer, matching `^(0|[1-9]\d*)$` on
+  the wire: no leading zeros, no `+`, no exponent form, no whitespace. The value that
+  gets checked is the value the sender actually signed, not whatever `Number()` coerces.
+- **Tolerance** defaults to 300 seconds, checked as `|now - timestamp| <= tolerance`.
+  Pass `tolerance` to `verifyWebhook` to change it.
+
+## Rotation
 
 ```ts
-{ signature: string } // hex-encoded
+await verifyWebhook({ secrets: [currentSecret, retiringSecret], ...rest });
 ```
 
----
+Sign with one secret. Verify against a list — a signature made with any entry in it is
+accepted. Keep the new secret first and the retiring one after it while both are live,
+then drop the old one. A list may hold at most 16 distinct secrets; duplicates are
+collapsed before that cap is applied.
 
-### `verifyWebhook(options): Promise<VerifyWebhookResult>`
-
-Async. Verifies signature, timestamp, and optional replay protection.
-
-| Parameter        | Type                                  | Required | Description                              |
-| ---------------- | ------------------------------------- | -------- | ---------------------------------------- |
-| `secret`         | `string`                              | Yes      | Shared secret key                        |
-| `payload`        | `string`                              | Yes      | Raw request body                         |
-| `signature`      | `string`                              | Yes      | Hex-encoded signature                    |
-| `timestamp`      | `number`                              | Yes      | Unix timestamp (seconds)                 |
-| `nonce`          | `string`                              | Yes      | Unique request identifier                |
-| `tolerance`      | `number`                              | No       | Max age in seconds (default: `300`)      |
-| `nonceValidator` | `(nonce: string) => Promise<boolean>` | No       | Return `false` if nonce was already seen |
-
-Returns `{ valid: true }` on success.
-Throws a typed error on failure.
-
----
-
-## Error Handling
-
-All verification failures throw **typed errors** for precise handling.
-
-| Error Class             | Code                        | Recommended HTTP Status |
-| ----------------------- | --------------------------- | ----------------------- |
-| `WebhookSignatureError` | `WEBHOOK_SIGNATURE_INVALID` | `401 Unauthorized`      |
-| `WebhookTimestampError` | `WEBHOOK_TIMESTAMP_EXPIRED` | `400 Bad Request`       |
-| `WebhookNonceError`     | `WEBHOOK_NONCE_REPLAYED`    | `409 Conflict`          |
+## Replay Protection
 
 ```ts
-import {
-  verifyWebhook,
-  WebhookTimestampError,
-  WebhookSignatureError,
-  WebhookNonceError,
-} from 'webhook-hmac-kit';
-
-try {
-  await verifyWebhook({ ... });
-} catch (err) {
-  if (err instanceof WebhookTimestampError) {
-    // Too old or too far in the future
-  } else if (err instanceof WebhookSignatureError) {
-    // Tampered payload or wrong secret
-  } else if (err instanceof WebhookNonceError) {
-    // Replay attack / duplicate delivery
-  }
-}
-```
-
----
-
-## Canonical String
-
-All signatures are computed over:
-
-```
-{version}:{timestamp}:{nonce}:{payload}
-```
-
-Example (`v1`):
-
-```
-v1:1700000000:nonce_abc123:{"event":"payment.completed","amount":4999}
-```
-
-The payload is included **verbatim** — no encoding, escaping, or normalization.
-
----
-
-## Why Raw Body Matters
-
-HMAC signs **exact bytes**. Parsing JSON breaks signatures.
-
-```ts
-const raw = '{ "amount": 4999, "currency": "usd" }';
-
-JSON.stringify(JSON.parse(raw));
-// {"amount":4999,"currency":"usd"} ← different bytes
-
-signWebhook({ payload: raw });                        // correct
-signWebhook({ payload: JSON.stringify(JSON.parse(raw)) }); // ❌ mismatch
-```
-
-**Always verify first, parse second.**
-
----
-
-## Common Webhook Security Mistakes
-
-1. **Using `===` for signature comparison**
-   → Vulnerable to timing attacks.
-   This library uses `crypto.timingSafeEqual`.
-
-2. **No timestamp validation**
-   → Captured requests can be replayed forever.
-
-3. **No nonce checking**
-   → Requests can be replayed within the tolerance window.
-
-4. **Parsing body before verification**
-   → Breaks signatures due to re-serialization.
-
-5. **Logging secrets**
-   → Log canonical strings or hashes, never secrets.
-
----
-
-## Platform Examples
-
-### Express.js (Receiver)
-
-```ts
-import express from 'express';
-import { verifyWebhook, WebhookError } from 'webhook-hmac-kit';
-
-const app = express();
-
-app.post(
-  '/webhook',
-  express.raw({ type: 'application/json' }),
-  async (req, res) => {
-    try {
-      await verifyWebhook({
-        secret: process.env.WEBHOOK_SECRET!,
-        payload: req.body.toString('utf-8'),
-        signature: req.headers['x-webhook-signature'],
-        timestamp: Number(req.headers['x-webhook-timestamp']),
-        nonce: req.headers['x-webhook-nonce'],
-      });
-
-      const event = JSON.parse(req.body.toString('utf-8'));
-      res.sendStatus(200);
-    } catch (err) {
-      if (err instanceof WebhookError) {
-        res.status(401).json({ error: err.code });
-      } else {
-        res.sendStatus(500);
-      }
-    }
-  }
-);
-```
-
----
-
-### Redis Nonce Validator (Replay Protection)
-
-```ts
-nonceValidator: async (nonce) => {
-  const key = `webhook:nonce:${nonce}`;
-  const exists = await redis.exists(key);
-  if (exists) return false;
-  await redis.set(key, '1', 'EX', 300);
-  return true;
-};
-```
-
----
-
-### Sending Webhooks (Salesforce-style)
-
-```ts
-import { signWebhook } from 'webhook-hmac-kit';
-import crypto from 'node:crypto';
-
-const payload = JSON.stringify({ event: 'record.updated', id: '001xx000003DGbX' });
-const timestamp = Math.floor(Date.now() / 1000);
-const nonce = crypto.randomUUID();
-
-const { signature } = signWebhook({
-  secret: 'whsec_your_secret',
-  payload,
-  timestamp,
-  nonce,
+await verifyWebhook({
+  ...rest,
+  nonceValidator: async (nonce) => {
+    const key = `webhook:nonce:${nonce}`;
+    if (await redis.exists(key)) return false;
+    await redis.set(key, '1', 'EX', 300);
+    return true;
+  },
 });
 ```
 
----
+This library does not store anything. It makes the nonce a safe cache key — dot-free,
+bounded length — and calls your `nonceValidator` after the signature has already
+checked out, never before. Replay protection is exactly as strong as the store behind
+that callback: its TTL needs to be at least your tolerance window, and it needs to be
+shared across every receiving instance, or a nonce accepted on one instance replays
+cleanly on another.
 
-## Why not JWT?
+## Adapters
 
-JWTs are designed for **authentication**, not signing arbitrary HTTP payloads.
+All three need the raw request body, same as the core functions.
 
-Webhook signatures must:
+### Express
 
-* Sign exact raw bytes
-* Avoid JSON canonicalization issues
-* Be cheap to verify
+```ts
+import { webhookVerifier } from 'webhook-hmac-kit/express';
 
-HMAC is simpler, safer, and battle-tested for webhook integrity.
+app.post(
+  '/webhook',
+  express.raw({ type: 'application/json' }),  // req.body must stay bytes here
+  webhookVerifier({
+    secrets: [process.env.WEBHOOK_SECRET_CURRENT, process.env.WEBHOOK_SECRET_OLD],
+    onError: (err) => logger.warn('webhook rejected', err),
+  }),
+  (req, res) => {
+    // req.webhookVerified === true; req.body is still bytes — parse it yourself.
+    res.sendStatus(200);
+  },
+);
+```
 
----
+### Fastify
+
+```ts
+import fastifyRawBody from 'fastify-raw-body';
+import { webhookPlugin } from 'webhook-hmac-kit/fastify';
+
+await app.register(fastifyRawBody);
+await app.register(webhookPlugin, { secrets: process.env.WEBHOOK_SECRET });
+
+app.post('/webhook', { preHandler: app.verifyWebhook }, async (request) => {
+  return { ok: true };
+});
+```
+
+### NestJS
+
+```ts
+// main.ts — request.rawBody needs this at bootstrap
+const app = await NestFactory.create(AppModule, { rawBody: true });
+
+// webhook.controller.ts
+import { UseGuards, Post } from '@nestjs/common';
+import { WebhookGuard } from 'webhook-hmac-kit/nest';
+
+@UseGuards(WebhookGuard)
+@Post('webhook')
+handleWebhook() {
+  return { ok: true };
+}
+```
+
+Register `WebhookModule.forRoot({ secrets: ... })` in the module that provides
+`WebhookGuard`.
+
+**Nest exception note.** `WebhookGuard` throws its own local exception class, because
+this library has no dependency on `@nestjs/common` and so cannot throw *its*
+`HttpException`. Nest's `BaseExceptionFilter` matches by `instanceof` against its own
+class, so a global exception filter renders this as a 500, not the intended 401,
+unless you catch and re-map it — the intended status is on `.getStatus()`, the real
+reason is in `onError` either way.
+
+## Error Handling
+
+Every verification failure throws a typed error. Adapters answer every one of them
+with the same status and body:
+
+| Error class | Code |
+|---|---|
+| `WebhookSignatureError` | `WEBHOOK_SIGNATURE_INVALID` |
+| `WebhookTimestampError` | `WEBHOOK_TIMESTAMP_EXPIRED` / `WEBHOOK_TIMESTAMP_INVALID` |
+| `WebhookNonceError` | `WEBHOOK_NONCE_REPLAYED` / `WEBHOOK_NONCE_INVALID` |
+
+All three extend `WebhookError`, so `catch (err) { if (err instanceof WebhookError) }`
+is enough to tell a verification failure from anything else. `WebCryptoUnavailableError`
+— thrown when the runtime has no Web Crypto — deliberately does not extend it: it means
+the receiver is broken, not that the request failed to verify, so adapters answer it
+with 500 instead of 401.
+
+## Threat Model
+
+- **The signature covers the exact bytes on the wire, end to end.** Pass the raw
+  bytes you sent or received — a `Uint8Array`, or the exact string, never a re-parsed
+  and re-serialised object, and never a body decoded to a string and then discarded
+  for something else. Getting this wrong used to be able to make two different
+  payloads verify against one signature (fixed in 2.0.0 — see the CHANGELOG).
+- **Replay protection is exactly as strong as the `nonceValidator` you supply.** This
+  library never caches anything itself; it only makes the nonce a safe cache key.
+  A store with a TTL shorter than your tolerance window, one that fails open, or one
+  that isn't shared across instances gives you no replay protection at all.
+- **This is integrity and authenticity only.** There is no confidentiality (HTTPS is
+  required and is not checked here), no protection once the shared secret leaks, and
+  no payload size limit — enforce that at your HTTP layer. Every verification failure
+  answers the same 401 with the same body on purpose; the specific reason is only
+  available through `onError`, never on the wire.
+
+## Runtime Support
+
+Node ≥22, Cloudflare Workers, Deno, Bun. Vercel Edge is not supported — its runtime is
+being wound down (Next.js 16.3 removed `runtime: 'edge'`).
+
+`globalThis.crypto.subtle` must exist. It does on all of the above by default. A Node
+process started with `--no-experimental-global-webcrypto` does not have it — drop that
+flag, or install the global yourself before importing this library:
+
+```ts
+globalThis.crypto ??= require('node:crypto').webcrypto;
+```
+
+There is no fallback inside this library: a literal `node:crypto` import gets resolved
+at bundle time by esbuild, wrangler and Metro whether or not the surrounding code can
+run it, so a guarded import would cost every bundled build for nothing.
+
+## Signature Comparison
+
+Verification compares digests with a Double-HMAC blind rather than trusting the
+runtime's own constant-time primitive: draw a random key, HMAC both the expected and
+the presented digest under it, and compare those results instead. This exists because
+constant-time HMAC verification is only required by the Web Crypto editor's draft
+(w3c/webcrypto PR #553), not by any published Recommendation, and Node itself shipped
+a plain `memcmp` in its own HMAC verify path until CVE-2026-21713 was patched (v20.20.2,
+v22.22.2, v24.14.1, v25.8.2) — since this library does not control which patch level a
+caller runs, it does not rely on the host's compare being constant-time in the first
+place. Defence in depth: no exploit of the underlying Node bug is demonstrated in the
+sources above. Cost: 3 `subtle.sign` and 2 `subtle.importKey` calls per configured
+secret to verify, 1 `importKey` and 1 `sign` to sign — fine for a webhook receiver, so
+don't put a 16-entry rotation list on a request path that isn't one.
 
 ## Test Vectors
 
-All vectors use secret `whsec_test_secret_key_1234567890` and version `v1`.
+All vectors below use secret `whsec_test_secret_key_1234567890`, `SIGNATURE_VERSION`
+`v2` and timestamp `1700000000`. The full set, with the canonical string for each, is
+in `test/vectors.ts`.
 
-| Payload                                       | Timestamp    | Nonce             | Expected Signature                                                 |
-| --------------------------------------------- | ------------ | ----------------- | ------------------------------------------------------------------ |
-| `{"event":"payment.completed","amount":4999}` | `1700000000` | `nonce_abc123`    | `dfa71af8832a81f0b996c3411de0b29f02a9292256a24ecf363465d3285bdc6b` |
-| *(empty)*                                     | `1700000000` | `nonce_empty001`  | `96771f2cf8576c2154f7fbcdcea8840087539ca78ce3a5b91539cce7354b0d05` |
-| `{"name":"Héllo Wörld","emoji":"🚀"}`         | `1700000000` | `nonce_unicode01` | `0907a577eb997d1d8d355051bd50efcb73af1075d04353c437e931b3f92f4f95` |
-
----
-
-## Security Considerations
-
-* Constant-time comparison
-* Replay protection via timestamp + nonce
-* Secret rotation supported at integration layer
-* HTTPS required (integrity ≠ confidentiality)
-* Apply payload size limits at HTTP layer
-
----
+| Name | Nonce | Payload | Signature |
+|---|---|---|---|
+| basic JSON | `nonce_abc123` | `{"event":"payment.completed","amount":4999}` | `v2=e797b4fdd2f6b2f3055a9ecc45985389a3458f113e4da5c7242e2aec2d733887` |
+| empty payload | `nonce_empty001` | *(empty)* | `v2=048213db0c13dc805ae0e9242ce377d23756eb5c6103f08c18e0b9301ff277fa` |
+| unicode payload | `nonce_unicode01` | `{"name":"Héllo Wörld","emoji":"🚀"}` | `v2=51bc5b40b150cfb802e6a1e806b69a1e6bbe1447d020aa2a0e9053d6bbc985d2` |
+| byte payload, not valid UTF-8 | `nonce_bytes001` | `7b ff 7d` (hex) | `v2=6bcc8aabb3021f06f7cb713985154d03ca3916082148444bd0cc75e3837cd430` |
 
 ## License
 
