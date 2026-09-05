@@ -44,9 +44,23 @@ describe('getSubtle', () => {
     expect(getSubtle()).toBe(globalThis.crypto.subtle);
   });
 
+  // Not a style point. On Workers the module body runs outside a request, so a SubtleCrypto
+  // captured at import time belongs to an isolate that may already be gone by the time a request
+  // uses it. The only way to show the value is re-read is to change it underneath and look.
   it('reads the global on every call rather than capturing it once', () => {
-    const first = getSubtle();
-    expect(getSubtle()).toBe(first);
+    const real = getSubtle();
+    const original = Object.getOwnPropertyDescriptor(globalThis, 'crypto');
+    const standIn = { subtle: { imposter: true } };
+
+    Object.defineProperty(globalThis, 'crypto', { value: standIn, configurable: true });
+    try {
+      expect(getSubtle()).toBe(standIn.subtle);
+      expect(getSubtle()).not.toBe(real);
+    } finally {
+      Object.defineProperty(globalThis, 'crypto', original as PropertyDescriptor);
+    }
+
+    expect(getSubtle()).toBe(real);
   });
 
   // There is no polyfill and no dynamic import to fall back to, so the whole value of the guard is
