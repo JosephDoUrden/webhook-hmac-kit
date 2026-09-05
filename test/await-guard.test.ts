@@ -13,9 +13,12 @@
 
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const TEST_DIR = new URL('.', import.meta.url).pathname;
+// fileURLToPath, not .pathname: the raw pathname keeps percent-encoding, so a checkout under a
+// directory with a space in it yields '%20' and readdirSync fails on a path that does not exist.
+const TEST_DIR = fileURLToPath(new URL('.', import.meta.url));
 
 /** This file quotes the pattern it is looking for, so it cannot be one of its own inputs. */
 const SELF = 'await-guard.test.ts';

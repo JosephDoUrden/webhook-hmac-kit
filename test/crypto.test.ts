@@ -1,5 +1,6 @@
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toHex, utf8 } from '../src/bytes.js';
 import { buildCanonicalBytes } from '../src/canonical.js';
@@ -26,7 +27,8 @@ describe('src imports nothing from Node', () => {
   // React Native consumers got "Unable to resolve module node:crypto" from exactly this shape.
   // Enforced here rather than trusted, because nothing else in the toolchain would notice.
   it('has no node: specifier in any source file', () => {
-    const src = new URL('../src/', import.meta.url).pathname;
+    // fileURLToPath rather than .pathname, which would leave percent-encoding in the path.
+    const src = fileURLToPath(new URL('../src/', import.meta.url));
     const offenders = sourceFiles(src)
       .filter((file) => NODE_SPECIFIER.test(readFileSync(file, 'utf8')))
       .map((file) => file.slice(src.length));
