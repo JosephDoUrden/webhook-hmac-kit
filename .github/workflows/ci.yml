@@ -56,12 +56,14 @@ jobs:
           node-version: 24
           cache: npm
 
-      # setup-deno's "v2" is a branch, not an immutable tag, so it is pinned by commit.
+      # Both "v2" refs are movable - setup-deno's is a branch, setup-bun's a tag that can be
+      # repointed - so neither says which code will run. Pinned by commit; the comment says which
+      # ref it came from, for whatever bumps them next.
       - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
         with:
           deno-version: v2.x
 
-      - uses: oven-sh/setup-bun@v2
+      - uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: latest
 
