@@ -195,6 +195,81 @@ class, so a global exception filter renders this as a 500, not the intended 401,
 unless you catch and re-map it: the intended status is on `.getStatus()`, the real
 reason is in `onError` either way.
 
+## Standard Webhooks
+
+Most providers you receive from speak [Standard Webhooks](https://www.standardwebhooks.com)
+rather than a scheme of their own, so the package ships a signer and a verifier for
+it alongside its own. Three functions, no new dependency, no adapter changes.
+
+```ts
+import { signStandardWebhooks, verifyStandardWebhooks } from 'webhook-hmac-kit';
+
+const headers = await signStandardWebhooks({
+  secrets: 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw',
+  messageId: 'msg_p5jXN8AQM9LWM0D4loKWxJek',
+  timestamp: Math.floor(Date.now() / 1000),
+  payload: body,
+});
+// { 'webhook-id': …, 'webhook-timestamp': …, 'webhook-signature': 'v1,<base64>' }
+
+await verifyStandardWebhooks({ secrets, headers: req.headers, payload: rawBody });
+```
+
+`verifyStandardWebhooks` resolves to `{ valid: true }` or throws the same
+`WebhookError` subclasses the rest of the library throws, so the error handling below
+applies unchanged. Header names are matched case-insensitively, a single-entry array
+is unwrapped, an empty string counts as missing, and two values for one header are
+refused rather than resolved. Secrets are `whsec_`-prefixed base64, or a `Uint8Array`
+of raw key bytes; `parseStandardWebhooksSecret` is exported if you want the bytes.
+
+**Never use one secret for both schemes.** `v2.{ts}.{nonce}.{payload}` and a Standard
+Webhooks message whose id is the literal `v2` and whose payload is `{nonce}.{payload}`
+are byte-identical, so a signature minted under one scheme is a valid signature under
+the other. Domain separation would close it and conformance forbids domain separation,
+so the rule is operational: generate a separate secret. A test pins the collision.
+
+**`webhook-id` is not a trust boundary.** Their signed value is
+`{id}.{timestamp}.{payload}` with nothing constraining the id, so an id holding a dot
+and a run of digits re-splits into a different, equally valid message carrying the same
+signature. It cannot be fixed without emitting signatures no conforming receiver would
+accept, so this module does not try, and gives you no replay hook keyed on it. If you
+need replay protection with a key you can actually trust, use this package's own
+scheme, where the nonce is dot-free by construction.
+
+### What differs on the way out and on the way in
+
+|  | Signing | Verifying |
+|---|---|---|
+| Key length | 24–64 bytes, the spec's stated range | any non-empty key |
+| Payload | must be well-formed UTF-8 | HMAC'd as raw bytes |
+| Message id | no `.`, no whitespace | anything non-empty |
+| Signature entries | one `v1,<base64>` per secret, space-joined | unknown tags and malformed entries skipped |
+
+Each asymmetry is the lenient side facing the network. No reference library enforces
+the key range, and upstream's own Python suite signs with a 23-byte key, so refusing a
+short key on receive would break a live integration to make a point. The five reference
+libraries disagree about a body that is not well-formed UTF-8 — Go signs the bytes,
+Rust refuses the message, JavaScript and Python sign a mangled copy — so there is no
+digest that satisfies all of them and the emitter refuses rather than producing one
+some receivers compute differently; the verifier has no such problem and takes the
+bytes as they arrive, which is Go's behaviour. Skipping unreadable signature entries is
+what their rotation model needs and what their own tests require: they put a `v2,`
+entry beside a valid one and expect the request to succeed.
+
+### What the interop claim covers
+
+This implementation reproduces the de-facto vector shared by six reference
+implementations — the JavaScript, Go, Python, Ruby, PHP and C# test suites all pin the
+same one — plus the Rust crate's own vector, both signing and verifying, byte for byte.
+Both are committed in `test/standard-webhooks-vectors.ts` with the upstream commit and
+path they came from.
+
+It does not cover: `svix-*` alias headers, the asymmetric `v1a` ed25519 tag, parsing
+the payload as JSON (this library never parses a payload), or a body that is not
+well-formed UTF-8, where the reference implementations do not agree with each other and
+so no single behaviour can be conformant. There is no official conformance suite to
+point at; those two vectors are what exists.
+
 ## Error Handling
 
 Every verification failure throws a typed error. Adapters answer every one of them

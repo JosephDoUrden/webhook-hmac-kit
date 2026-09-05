@@ -5,6 +5,49 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.1.0] - Unreleased
+
+### Added
+
+- Standard Webhooks support, as a separate scheme rather than a mode of this one:
+  `signStandardWebhooks`, `verifyStandardWebhooks` and `parseStandardWebhooksSecret`,
+  exported from the package entry point with `StandardWebhooksSecret`,
+  `StandardWebhooksHeaders` and the two option types. Zero new dependencies. Nothing
+  about the `v2` scheme changes, and the adapters are untouched: there is no
+  `standardWebhooks` flag on them, because one option carrying both secret encodings
+  would make the same configured string a different key depending on a boolean, and
+  their scheme has no field that can carry replay protection.
+- `toBase64` and `fromBase64` in `src/bytes.ts`, internal. Strict about the alphabet
+  and the group length where the platform decoders are not, deliberately lenient about
+  the bits below the last whole byte, because the unpadded secrets in the upstream
+  Standard Webhooks fixtures set them.
+
+### Known limitations of the Standard Webhooks scheme
+
+Both are properties of that specification, not of this implementation, and both are
+pinned by tests rather than worked around, because working around either would mean
+emitting signatures no conforming receiver accepts.
+
+- **`webhook-id` is not a trust boundary.** The signed value is
+  `{id}.{timestamp}.{payload}` with nothing constraining the id, so an id containing a
+  dot and a run of digits re-splits into a different, equally valid message carrying
+  the same signature. `verifyStandardWebhooks` therefore offers no replay hook keyed on
+  it. The `v2` scheme's nonce is dot-free by construction and does not have this
+  problem.
+- **The two schemes must never share key material.** `v2.{ts}.{nonce}.{payload}` is
+  byte-identical to a Standard Webhooks message whose id is the literal `v2` and whose
+  payload is `{nonce}.{payload}`, so one key used for both lets a signature minted
+  under either be presented as valid under the other. Generate a separate secret.
+
+### Interop
+
+Reproduces the de-facto vector shared by six reference implementations (the JavaScript,
+Go, Python, Ruby, PHP and C# suites all pin the same one) and the Rust crate's own
+vector, signing and verifying, byte for byte. There is no official conformance suite.
+Not covered: `svix-*` alias headers, the asymmetric `v1a` tag, JSON parsing of the
+payload, and bodies that are not well-formed UTF-8, where the reference libraries
+disagree with one another so no single behaviour is conformant.
+
 ## [2.0.0] - 2026-09-05
 
 The real baseline for this entry is npm's published 1.0.0 (02 Feb 2026), which shipped
