@@ -113,6 +113,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **The v1 canonical string could be re-split into a different nonce and payload, and
+  the forged split replayed straight past a correct nonce cache.** The old format
+  joined `{version}:{timestamp}:{nonce}:{payload}` on a colon that neither the nonce
+  nor the payload was ever constrained against, so a payload containing a colon let
+  the same bytes on the wire parse as more than one (nonce, payload) split — each one
+  byte-identical to what was actually signed, so each one verified. The nonce is the
+  value a replay cache keys on, so an attacker who had seen one delivery could present
+  it again with the split point moved a colon over: every variant reads as a fresh
+  nonce to the cache, so a cache that correctly rejects the honest replay waves the
+  forged ones through anyway. Fixed by moving the delimiter to a dot and constraining
+  the nonce to `^[A-Za-z0-9_-]{1,64}$` — dot-free, so it can never be mistaken for the
+  boundary — which makes the split unambiguous rather than merely unlikely to collide.
 - **The canonical string was injective; the bytes actually signed were not.**
   `buildCanonicalString` produced a distinct string for every distinct
   (timestamp, nonce, payload) triple, but the signer and verifier UTF-8-encoded that
