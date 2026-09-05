@@ -257,7 +257,7 @@ the presented digest under it, and compare those results instead. This exists be
 constant-time HMAC verification is only required by the Web Crypto editor's draft
 (w3c/webcrypto PR #553), not by any published Recommendation, and Node itself shipped
 a plain `memcmp` in its own HMAC verify path until CVE-2026-21713 was patched (v20.20.2,
-v22.22.2, v24.14.1, v25.8.2), since this library does not control which patch level a
+v22.22.2, v24.14.1, v25.8.2). Since this library does not control which patch level a
 caller runs, it does not rely on the host's compare being constant-time in the first
 place. Defence in depth: no exploit of the underlying Node bug is demonstrated in the
 sources above. Cost: 3 `subtle.sign` and 2 `subtle.importKey` calls per configured

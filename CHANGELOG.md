@@ -44,7 +44,9 @@ are new to anyone installing from npm, not a change to something npm ever shippe
 - `DEFAULT_VERSION` is no longer exported.
 - Core timestamp validation tightened from `Number.isFinite` to a non-negative safe
   integer. A float or an out-of-range value that 1.0.0 accepted, and silently folded
-  into the canonical string, is now refused with a `TypeError` before any HMAC work.
+  into the canonical string, is now refused before any HMAC work: `signWebhook`
+  throws a `TypeError`, `verifyWebhook` throws `WebhookTimestampError` /
+  `WEBHOOK_TIMESTAMP_INVALID`.
 - `signWebhook` now validates `timestamp` and `nonce` before signing. 1.0.0 validated
   only the secret, so a malformed timestamp or nonce used to sign successfully.
 - `WebhookErrorCode` gained two members, `WEBHOOK_TIMESTAMP_INVALID` and
@@ -91,6 +93,21 @@ are new to anyone installing from npm, not a change to something npm ever shippe
     instead of silently using the first value
   - header name options (`signatureHeader`, `timestampHeader`, `nonceHeader`) are
     lower-cased before lookup, since Node lower-cases incoming header keys
+
+  Bugs found in the adapters and fixed before any of it reached npm:
+  - the Fastify verification hook didn't return the reply on a failure, so Fastify
+    could carry on into the route handler after a response had already gone out
+  - the Nest guard's raw-body configuration error escaped its `try` block and
+    surfaced as a bare `Error`, instead of being caught and mapped like every other
+    failure
+  - a synchronous throw from the downstream Express handler could land in the
+    webhook middleware's own error handler, misreporting an unrelated error as a
+    verification failure
+  - `resolveRawBody` refused a plain `Uint8Array` request body and reported it as
+    an already-parsed one, even though the core library accepts a bare `Uint8Array`
+    payload
+  - an `onError` callback that itself threw could leave a request with no response
+    at all
 - CI job `edge-smoke`: the built package is imported and run against the seven test
   vectors on Node, Deno and Bun.
 
@@ -166,19 +183,6 @@ are new to anyone installing from npm, not a change to something npm ever shippe
   template literal, so `sign(['a'])`, `sign(null)` and `sign({})` produced the same
   signature as `sign('a')`, `sign('null')` and `sign('[object Object]')`. It now throws
   a `TypeError` for anything that is not a string or `Uint8Array`.
-- The Fastify adapter's verification hook answered a failure with
-  `reply.code(...).send(...)` but did not return the reply, so Fastify did not learn
-  the response had already gone out and could continue into the route handler.
-- The NestJS guard's raw-body configuration error escaped its `try` block entirely and
-  surfaced as a bare `Error` instead of the guard's own exception; it is now caught and
-  mapped the same way as every other failure.
-- Express: a synchronous throw from the downstream route handler could land in the
-  webhook middleware's own error handler, misreporting an unrelated error as a
-  verification failure and firing `onError` for it. `.then(onSuccess, onFailure)`
-  replaces `.then(onSuccess).catch(onFailure)`.
-- `resolveRawBody` refused a plain `Uint8Array` request body and reported it as an
-  already-parsed body, even though the core library accepts a bare `Uint8Array`
-  payload. It now accepts any `Uint8Array`, not only the Node `Buffer` subclass of it.
 - Secrets are now capped and deduplicated before every request pays for an HMAC per
   entry; a misconfigured list of hundreds of copies of one secret used to cost one HMAC
   per copy.

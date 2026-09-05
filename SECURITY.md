@@ -35,7 +35,7 @@ results are compared, instead of trusting the host runtime's own constant-time
 primitive, or having one at all.
 
 The reason: Web Crypto's HMAC verify has only been required to run in constant time
-since the editor's draft added it (w3c/webcrypto PR #553, 26 Mar 2026), neither the
+since the editor's draft added it (w3c/webcrypto PR #553, 26 Mar 2026). Neither the
 2017 Recommendation nor the Level 2 First Public Working Draft says so, and there is
 no web-platform-test for it. Node itself shipped a plain `memcmp` in its HMAC verify
 path until CVE-2026-21713 was fixed in v20.20.2, v22.22.2, v24.14.1 and v25.8.2
