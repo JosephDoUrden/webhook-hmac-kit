@@ -22,6 +22,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the bits below the last whole byte, because the unpadded secrets in the upstream
   Standard Webhooks fixtures set them.
 
+### Fixed
+
+- `verifyWebhook` and `verifyStandardWebhooks` no longer answer `{ valid: true }` when
+  `subtle.sign` returns buffers of the wrong size. An empty return made every blinded
+  value the same empty run, the constant-time fold found no difference between them,
+  and a forged signature verified. Present since 2.0.0 and reachable only on a broken
+  or tampered runtime, since nothing an attacker sends can change what Web Crypto
+  returns. It now throws a plain `Error`, not a `WebhookError`: the receiver is broken
+  rather than the request being wrong, so adapters answer 500 and not 401.
+
+### Changed
+
+- `verifyStandardWebhooks` weighs at most 16 signature entries, the same cap that
+  bounds the secret list. The entry count arrives from the network and each entry was
+  compared against every configured secret, so a 16 KiB header of correct-length junk
+  bought 10800 `subtle.sign` calls and 110 ms of CPU per unauthenticated request
+  against a 16-key rotation. A conforming sender emits one entry per live key, so
+  nothing legitimate reaches the cap; a valid signature beyond it is not found.
+- Blinding is now done once per request rather than once per comparison, so comparing
+  `s` secrets against `e` entries costs `s + e` signatures instead of `2 × s × e`. The
+  same 16-key, 337-entry request now costs 48 `subtle.sign` calls and 0.6 ms.
+  `verifyWebhook` is unchanged: it carries one presented signature, so it has no
+  quadratic term to remove.
+
 ### Known limitations of the Standard Webhooks scheme
 
 Both are properties of that specification, not of this implementation, and both are

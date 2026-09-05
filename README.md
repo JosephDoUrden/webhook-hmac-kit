@@ -220,7 +220,9 @@ await verifyStandardWebhooks({ secrets, headers: req.headers, payload: rawBody }
 applies unchanged. Header names are matched case-insensitively, a single-entry array
 is unwrapped, an empty string counts as missing, and two values for one header are
 refused rather than resolved. Secrets are `whsec_`-prefixed base64, or a `Uint8Array`
-of raw key bytes; `parseStandardWebhooksSecret` is exported if you want the bytes.
+of raw key bytes; `parseStandardWebhooksSecret` is exported if you want the bytes. A secret whose
+base64 length leaves a remainder of 1 is rejected here, where the upstream JavaScript library
+decodes it anyway and silently gives you a key one character shorter than the one you configured.
 
 **Never use one secret for both schemes.** `v2.{ts}.{nonce}.{payload}` and a Standard
 Webhooks message whose id is the literal `v2` and whose payload is `{nonce}.{payload}`
@@ -241,9 +243,13 @@ scheme, where the nonce is dot-free by construction.
 |  | Signing | Verifying |
 |---|---|---|
 | Key length | 24–64 bytes, the spec's stated range | any non-empty key |
-| Payload | must be well-formed UTF-8 | HMAC'd as raw bytes |
+| Payload | must be well-formed UTF-8 | hashed as bytes; a string payload is UTF-8 encoded first |
 | Message id | no `.`, no whitespace | anything non-empty |
 | Signature entries | one `v1,<base64>` per secret, space-joined | unknown tags and malformed entries skipped |
+
+A verifier weighs at most 16 signature entries, the same cap that bounds the secret list, because
+the entry count arrives from the network and every entry is weighed against every configured
+secret. A conforming sender emits one entry per live key, so nothing legitimate reaches it.
 
 Each asymmetry is the lenient side facing the network. No reference library enforces
 the key range, and upstream's own Python suite signs with a 23-byte key, so refusing a
