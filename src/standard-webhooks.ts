@@ -71,6 +71,23 @@ const MAX_SIGNING_KEY_BYTES = 64;
 const SHA256_DIGEST_BYTES = 32;
 
 /**
+ * How many signature entries a verify will weigh, however many arrive.
+ *
+ * The entry count is chosen by whoever is calling, and every entry is compared against every
+ * configured secret, so without a cap an unauthenticated request buys as much of the receiver's
+ * CPU as its header size allows: correct-length junk costs nothing to produce, and 337 entries fit
+ * in Node's default 16 KiB header block, which against a 16-key rotation is over five thousand
+ * comparisons for one request that was never going to verify. The 32-byte length guard in
+ * parseDigests does not help here - it only drops entries that are too short.
+ *
+ * Set to MAX_SECRETS because it is the same quantity seen from the other end. A conforming sender
+ * emits one entry per live key, so the longest legitimate list is the longest legitimate rotation,
+ * which this package already caps at 16. Anything past that is refused rather than weighed, and a
+ * valid signature sitting beyond the cap is not found - a trade-off, and one no real sender meets.
+ */
+export const MAX_SIGNATURE_ENTRIES = MAX_SECRETS;
+
+/**
  * A message id we are willing to put our own name to: no dot, because the dot is the field
  * delimiter, and no whitespace, because the signature header is a space-separated list and an id
  * carrying a space reads as two of something.
@@ -321,10 +338,12 @@ export async function verifyStandardWebhooks(
     throw new WebhookTimestampError();
   }
 
-  // 2. The signature list, before any HMAC work. Anything that does not decode to a 32-byte digest
-  //    cannot be an HMAC-SHA256 output, so it is dropped here rather than compared against one -
-  //    otherwise a header full of two-character signatures would buy an attacker an HMAC apiece.
-  const presented = parseDigests(headers.signature);
+  // 2. The signature list, before any HMAC work. Two separate guards, and only one of them is
+  //    about cost. Anything that does not decode to a 32-byte digest cannot be an HMAC-SHA256
+  //    output, so it is dropped rather than compared against one; that alone bounds nothing,
+  //    because correct-length junk is free to produce. The cap is what bounds the work, and
+  //    MAX_SIGNATURE_ENTRIES says why.
+  const presented = parseDigests(headers.signature).slice(0, MAX_SIGNATURE_ENTRIES);
   if (presented.length === 0) {
     throw new WebhookSignatureError('Webhook signature header carries no usable v1 signature');
   }

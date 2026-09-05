@@ -6,6 +6,7 @@ import { getSubtle } from '../src/crypto.js';
 import { WebhookError, WebhookSignatureError, WebhookTimestampError } from '../src/errors.js';
 import { signWebhook } from '../src/signer.js';
 import {
+  MAX_SIGNATURE_ENTRIES,
   buildStandardWebhooksBytes,
   parseStandardWebhooksSecret,
   signStandardWebhooks,
@@ -145,8 +146,10 @@ describe('the signature list', () => {
   });
 
   // A base64 value that decodes to anything but 32 bytes cannot be an HMAC-SHA256 digest, so it is
-  // refused before any key is imported. The spy is the assertion: an attacker who can post a
-  // hundred short signatures must not be able to make the receiver do a hundred HMACs.
+  // dropped before any key is imported. This bounds nothing on its own - correct-length junk is
+  // free to produce, and 337 such entries fit in Node's default 16 KiB header block - so the cap
+  // below is what actually limits the work. The two are separate guards and only one of them is
+  // about cost.
   it('refuses a wrong-length digest before doing any crypto', async () => {
     const sign = vi.spyOn(getSubtle(), 'sign');
     const importKey = vi.spyOn(getSubtle(), 'importKey');
@@ -161,6 +164,52 @@ describe('the signature list', () => {
 
     expect(sign).toHaveBeenCalledTimes(0);
     expect(importKey).toHaveBeenCalledTimes(0);
+  });
+
+  // The number of entries on the wire is chosen by whoever is calling, and every entry costs a
+  // comparison against every configured secret, so an unauthenticated request could otherwise buy
+  // as much of the receiver's CPU as its header size allows. A conforming sender emits one entry
+  // per live key, so the cap is the same one that bounds the key list.
+  it('weighs no more entries than a rotation could legitimately carry', async () => {
+    const beyondTheCap = Array.from({ length: 500 }, () => WRONG_KEY_SIGNATURE);
+    const sign = vi.spyOn(getSubtle(), 'sign');
+
+    await expect(
+      verifyStandardWebhooks({
+        secrets: VECTOR_A.secret,
+        headers: headersFor(VECTOR_A, [...beyondTheCap, VECTOR_A.signature].join(' ')),
+        payload: VECTOR_A.payload,
+      }),
+    ).rejects.toThrow(WebhookSignatureError);
+
+    expect(sign).toHaveBeenCalledTimes(1 * (1 + 2 * MAX_SIGNATURE_ENTRIES));
+  });
+
+  // The trade-off, written down rather than discovered. A valid signature sitting past the cap is
+  // not found, so a sender that emitted more than MAX_SIGNATURE_ENTRIES entries would fail here
+  // even though the header is well formed. No sender does: the entry list is one signature per
+  // live key, the same rotation the secret cap already bounds at 16, and a header long enough to
+  // hit this is a header nobody generates by accident.
+  it('does not look past the cap, even for a valid entry', async () => {
+    const padding = Array.from({ length: MAX_SIGNATURE_ENTRIES }, () => WRONG_KEY_SIGNATURE);
+
+    await expect(
+      verifyStandardWebhooks({
+        secrets: VECTOR_A.secret,
+        headers: headersFor(VECTOR_A, [...padding, VECTOR_A.signature].join(' ')),
+        payload: VECTOR_A.payload,
+      }),
+    ).rejects.toThrow(WebhookSignatureError);
+
+    // One entry earlier and the same signature is found, so the rejection above is the cap and
+    // nothing else.
+    await expect(
+      verifyStandardWebhooks({
+        secrets: VECTOR_A.secret,
+        headers: headersFor(VECTOR_A, [...padding.slice(1), VECTOR_A.signature].join(' ')),
+        payload: VECTOR_A.payload,
+      }),
+    ).resolves.toEqual({ valid: true });
   });
 
   // Every secret is weighed against every entry, whether or not an earlier pair matched. A break
