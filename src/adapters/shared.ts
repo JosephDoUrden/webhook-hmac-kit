@@ -93,13 +93,18 @@ export function extractHeaders(
  * order, so verification would fail for every request and look like a bad secret. That is a
  * configuration problem, and it is reported as one instead of being papered over.
  *
- * A Buffer is handed on as it is. Decoding it to a string first would collapse every byte sequence
- * that is not valid UTF-8 onto the same replacement characters, and two different bodies would
- * share one signature.
+ * Bytes are handed on as they are. Decoding them to a string first would collapse every byte
+ * sequence that is not valid UTF-8 onto the same replacement characters, and two different bodies
+ * would share one signature.
+ *
+ * The check is against Uint8Array rather than Buffer, which is a subclass of it: a body parser or
+ * a test that hands over a plain Uint8Array is giving us exactly what we asked for, and calling
+ * that an already-parsed body sends the integrator hunting for a raw-body parser that is already
+ * configured correctly.
  */
 export function resolveRawBody(request: { rawBody?: unknown; body?: unknown }): WebhookPayload {
   const raw = request.rawBody ?? request.body;
-  if (Buffer.isBuffer(raw)) {
+  if (raw instanceof Uint8Array) {
     return raw;
   }
   if (typeof raw === 'string') {
