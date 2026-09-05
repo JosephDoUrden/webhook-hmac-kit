@@ -24,7 +24,6 @@ npm run build        # Build ESM + CJS + type declarations (tsup)
 npm run typecheck    # Type-check without emitting (tsc --noEmit)
 npm run test         # Run tests once (vitest run)
 npm run test:watch   # Run tests in watch mode (vitest)
-npm run test:coverage # Run tests with v8 coverage
 npm run lint         # Lint and format check (biome check .)
 npm run lint:fix     # Auto-fix lint and format issues (biome check --write .)
 npm run format       # Format all files (biome format --write .)
