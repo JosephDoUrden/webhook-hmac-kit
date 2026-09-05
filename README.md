@@ -197,9 +197,9 @@ reason is in `onError` either way.
 
 ## Standard Webhooks
 
-Most providers you receive from speak [Standard Webhooks](https://www.standardwebhooks.com)
-rather than a scheme of their own, so the package ships a signer and a verifier for
-it alongside its own. Three functions, no new dependency, no adapter changes.
+Some providers sign with [Standard Webhooks](https://www.standardwebhooks.com) rather
+than a scheme of their own, so the package ships a signer and a verifier for it
+alongside its own. Three functions, no new dependency, no adapter changes.
 
 ```ts
 import { signStandardWebhooks, verifyStandardWebhooks } from 'webhook-hmac-kit';
@@ -217,12 +217,21 @@ await verifyStandardWebhooks({ secrets, headers: req.headers, payload: rawBody }
 
 `verifyStandardWebhooks` resolves to `{ valid: true }` or throws the same
 `WebhookError` subclasses the rest of the library throws, so the error handling below
-applies unchanged. Header names are matched case-insensitively, a single-entry array
-is unwrapped, an empty string counts as missing, and two values for one header are
-refused rather than resolved. Secrets are `whsec_`-prefixed base64, or a `Uint8Array`
-of raw key bytes; `parseStandardWebhooksSecret` is exported if you want the bytes. A secret whose
-base64 length leaves a remainder of 1 is rejected here, where the upstream JavaScript library
-decodes it anyway and silently gives you a key one character shorter than the one you configured.
+applies unchanged — for anything that is a failed verification. Two kinds of failure are
+not: a mistake in your own arguments (a `tolerance` that is not a non-negative finite
+number, a secret outside the base64 grammar) throws a plain `Error` or `TypeError`, and
+a runtime whose Web Crypto misbehaves throws a plain `Error` too, the same way
+`WebCryptoUnavailableError` does. Neither is a `WebhookError`, so the adapters answer
+them with 500 rather than 401: your configuration or your machine is wrong, not the
+caller's signature.
+
+Header names are matched case-insensitively, a single-entry array is unwrapped, an empty
+string counts as missing, and two values for one header are refused rather than resolved.
+Secrets are `whsec_`-prefixed base64, or a `Uint8Array` of raw key bytes;
+`parseStandardWebhooksSecret` is exported if you want the bytes. A secret whose base64
+length leaves a remainder of 1 is rejected here, where the upstream JavaScript library
+decodes it anyway and silently gives you a key one character shorter than the one you
+configured.
 
 **Never use one secret for both schemes.** `v2.{ts}.{nonce}.{payload}` and a Standard
 Webhooks message whose id is the literal `v2` and whose payload is `{nonce}.{payload}`
@@ -253,7 +262,7 @@ secret. A conforming sender emits one entry per live key, so nothing legitimate 
 
 Each asymmetry is the lenient side facing the network. No reference library enforces
 the key range, and upstream's own Python suite signs with a 23-byte key, so refusing a
-short key on receive would break a live integration to make a point. The five reference
+short key on receive would break a live integration to make a point. Four reference
 libraries disagree about a body that is not well-formed UTF-8 — Go signs the bytes,
 Rust refuses the message, JavaScript and Python sign a mangled copy — so there is no
 digest that satisfies all of them and the emitter refuses rather than producing one
@@ -267,6 +276,9 @@ entry beside a valid one and expect the request to succeed.
 This implementation reproduces the de-facto vector shared by six reference
 implementations — the JavaScript, Go, Python, Ruby, PHP and C# test suites all pin the
 same one — plus the Rust crate's own vector, both signing and verifying, byte for byte.
+The two counts above describe different sets: six suites pin that vector, and the four
+libraries whose payload handling was read at source (Go, Rust, JavaScript, Python) are
+the ones that disagree about non-UTF-8 bodies.
 Both are committed in `test/standard-webhooks-vectors.ts` with the upstream commit and
 path they came from.
 
@@ -275,6 +287,10 @@ the payload as JSON (this library never parses a payload), or a body that is not
 well-formed UTF-8, where the reference implementations do not agree with each other and
 so no single behaviour can be conformant. There is no official conformance suite to
 point at; those two vectors are what exists.
+
+If your provider still sends the older `svix-id`, `svix-timestamp` and `svix-signature`
+names, map them onto the `webhook-*` names before calling: the values are identical, and
+`verifyStandardWebhooks` looks only for the specified names.
 
 ## Error Handling
 
