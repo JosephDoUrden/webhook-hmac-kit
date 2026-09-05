@@ -1,7 +1,6 @@
 # webhook-hmac-kit
 
 [![npm version](https://img.shields.io/npm/v/webhook-hmac-kit)](https://www.npmjs.com/package/webhook-hmac-kit)
-[![npm downloads](https://img.shields.io/npm/dw/webhook-hmac-kit)](https://www.npmjs.com/package/webhook-hmac-kit)
 [![license](https://img.shields.io/npm/l/webhook-hmac-kit)](https://github.com/JosephDoUrden/webhook-hmac-kit/blob/main/LICENSE)
 
 Sign and verify webhook requests with HMAC-SHA256: timestamp validation, nonce-based
