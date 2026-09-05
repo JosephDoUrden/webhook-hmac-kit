@@ -58,6 +58,14 @@ describe('public surface', () => {
     expect(Object.keys(api)).not.toContain('buildStandardWebhooksBytes');
   });
 
+  // The cap changes what a verify will accept, so a consumer sizing a rotation or debugging a
+  // header that stopped verifying needs the number rather than the sentence in the README. Exported
+  // for the same reason MAX_SECRETS is.
+  it('publishes the entry cap as a number', () => {
+    expect(api.MAX_SIGNATURE_ENTRIES).toBe(api.MAX_SECRETS);
+    expect(Number.isSafeInteger(api.MAX_SIGNATURE_ENTRIES)).toBe(true);
+  });
+
   // StandardWebhooksSecret and WebhookSecret are both `string | Uint8Array`, so they are the same
   // type and the compiler will not stop anyone swapping one for the other. The separation is
   // documentary: two names, each with the encoding written on it, so the reader of a call site can

@@ -27,6 +27,7 @@ export type { ParsedSignature } from './signature.js';
 // the shape of the signed value, useful for tests and for showing what was signed, and its output
 // is not something a caller should be handing to an HMAC themselves.
 export {
+  MAX_SIGNATURE_ENTRIES,
   parseStandardWebhooksSecret,
   signStandardWebhooks,
   verifyStandardWebhooks,

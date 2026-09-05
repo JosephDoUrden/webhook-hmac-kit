@@ -17,6 +17,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `standardWebhooks` flag on them, because one option carrying both secret encodings
   would make the same configured string a different key depending on a boolean, and
   their scheme has no field that can carry replay protection.
+- `MAX_SIGNATURE_ENTRIES`, the number of `webhook-signature` entries a verify will
+  weigh. Equal to `MAX_SECRETS`, and exported for the same reason: it changes what a
+  verify accepts, so it belongs in the API rather than only in the README.
 - `toBase64` and `fromBase64` in `src/bytes.ts`, internal. Strict about the alphabet
   and the group length where the platform decoders are not, deliberately lenient about
   the bits below the last whole byte, because the unpadded secrets in the upstream
