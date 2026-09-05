@@ -92,20 +92,38 @@ export async function hmacSha256(keyBytes: Uint8Array, data: Uint8Array): Promis
  * Hence the Double-HMAC blind, in the form jose uses: draw a random 32-byte key, MAC both operands
  * under it, and compare the results. A leaky comparison then reveals only how two random-looking
  * digests agree, under a key that is discarded when this function returns — there is nothing an
- * attacker can iterate towards. Defence in depth: no remote exploit of the underlying bug has been
- * demonstrated, and there is a reasonable dissent that this abuses the API.
+ * attacker can iterate towards.
+ *
+ * Scope, stated honestly. Every other runtime we target was read at source and is already constant
+ * time: workerd and Chromium use CRYPTO_memcmp, Firefox NSS_SecureMemcmp, WebKit's openssl and
+ * gcrypt ports constantTimeMemcmp, Deno aws-lc / RustCrypto, and Node itself after b36d5a3d. The
+ * only family this defends against is unpatched Node, and it is defence in depth — no remote
+ * exploit of the underlying bug appears in any of the sources. The dissent is worth keeping: Miller
+ * argues the threat models differ enough that this is not needed, and armfazh calls the blind an
+ * abuse of the API. Both are reasonable; the deciding factor is that we ship a library and do not
+ * choose our users' patch level.
+ *
+ * The fold below is JS and therefore not itself guaranteed constant time — hand-written JS cannot
+ * be (CT-Wasm, POPL 2019; Pornin, IACR ePrint 2025/435), and nodejs/node#38226 measured t up to
+ * 37.9 on the *native* primitive when unrelated JS changed. That is precisely why what it compares
+ * is blinded rather than secret: the fold is allowed to leak.
  *
  * The blinding key comes from getRandomValues plus importKey rather than generateKey. generateKey
  * for HMAC needs an IoContext on Workers and throws outside a request, getRandomValues is the only
  * synchronous member of the Crypto interface and is present everywhere, and this way the key length
  * is ours to state.
  *
- * What is deliberately not here: a JS byte loop as the primary compare (Deno's own is documented as
- * "best-effort", and Node deleted its benchmark for the property after three years because it could
- * not be measured); '===' on the hex strings (hono, GHSA-gq3j-xvxp-8hrf); a preference branch for
- * Cloudflare's non-standard crypto.subtle.timingSafeEqual, which would be a second code path that
- * no CI job here runs and which throws on a length mismatch where this does not; and per-runtime
- * conditional exports, which jose abandoned because runtimes ignore their own conditions.
+ * The known-bad list, so none of it comes back:
+ *   - a bare JS byte loop as the primary compare. Deno's own is documented as "best-effort", and
+ *     Node deleted its benchmark for the property after three years because it could not be
+ *     measured.
+ *   - '===' on the hex strings. That is hono, GHSA-gq3j-xvxp-8hrf.
+ *   - a preference branch for Cloudflare's non-standard crypto.subtle.timingSafeEqual. It would be
+ *     a second code path that no CI job here executes and live code on the runtime the migration
+ *     exists for, and it throws on a length mismatch where this does not, leaking what verify hides.
+ *   - per-runtime conditional exports, which jose abandoned because runtimes ignore their own
+ *     conditions and reach for the Node build anyway.
+ *   - a vendored hash. standardwebhooks still carries fast-sha256, three years stale.
  */
 export async function blindedEqual(a: Uint8Array, b: Uint8Array): Promise<boolean> {
   const subtle = getSubtle();
