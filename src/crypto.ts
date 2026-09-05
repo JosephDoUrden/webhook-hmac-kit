@@ -10,6 +10,19 @@
 const HMAC_SHA256 = { name: 'HMAC', hash: 'SHA-256' } as const;
 
 /**
+ * Web Crypto's types, derived from the global rather than named.
+ *
+ * SubtleCrypto, CryptoKey and BufferSource are not globals under `lib: ["ES2022"]`; they resolve
+ * only through @types/node, and only from the 25 line — on 22, which is this package's engines
+ * floor, all three are undeclared. Adding "DOM" to `lib` would supply them and also let every
+ * browser-only API into src unnoticed, which is the larger problem. Reading the types off the
+ * object we actually call works on every @types/node in range and cannot drift from it.
+ */
+type Subtle = NonNullable<typeof globalThis.crypto>['subtle'];
+type HmacKey = Awaited<ReturnType<Subtle['importKey']>>;
+type BytesForSubtle = Parameters<Subtle['digest']>[1];
+
+/**
  * Widens a Uint8Array to the BufferSource the Web Crypto signatures ask for.
  *
  * TypeScript models BufferSource as excluding SharedArrayBuffer-backed views, so a plain
@@ -17,13 +30,7 @@ const HMAC_SHA256 = { name: 'HMAC', hash: 'SHA-256' } as const;
  * need its own cast. The algorithms take "a copy of the bytes held by the buffer source" and have
  * no such restriction, and everything this module is handed came out of bytes.ts freshly
  * allocated. One cast, in one place, with the reason next to it.
- *
- * The target type is read off SubtleCrypto rather than named: BufferSource is not a global under
- * `lib: ["ES2022"]`, and spelling it Uint8Array<ArrayBuffer> would put TypeScript 5.7 syntax in a
- * package whose declared floor is older.
  */
-type BytesForSubtle = Parameters<SubtleCrypto['digest']>[1];
-
 function bufferSource(bytes: Uint8Array): BytesForSubtle {
   return bytes as BytesForSubtle;
 }
@@ -48,7 +55,7 @@ export class WebCryptoUnavailableError extends Error {
  * Read fresh every time and never captured at module scope: on Workers the module body runs outside
  * a request, and a value cached there outlives the isolate that produced it.
  */
-export function getSubtle(): SubtleCrypto {
+export function getSubtle(): Subtle {
   const subtle = globalThis.crypto?.subtle;
   if (typeof subtle !== 'object' || subtle === null) {
     throw new WebCryptoUnavailableError();
@@ -66,7 +73,7 @@ export function getSubtle(): SubtleCrypto {
  * both do, and caching a CryptoKey across requests is the sort of cross-request state a Workers
  * isolate is entitled to refuse.
  */
-export function importHmacKey(keyBytes: Uint8Array): Promise<CryptoKey> {
+export function importHmacKey(keyBytes: Uint8Array): Promise<HmacKey> {
   return getSubtle().importKey('raw', bufferSource(keyBytes), HMAC_SHA256, false, [
     'sign',
     'verify',
