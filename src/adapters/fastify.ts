@@ -38,17 +38,20 @@ export function webhookPlugin(
 
   fastify.decorateRequest('webhookVerified', false);
 
+  // An async hook that has already answered must return the reply. Without it Fastify does not
+  // learn the response went out and carries on into the route handler, which runs its side effects
+  // and only then fails with FST_ERR_REP_ALREADY_SENT.
   fastify.decorate(
     'verifyWebhook',
-    async (request: FastifyRequest, reply: FastifyReply): Promise<void> => {
+    async (request: FastifyRequest, reply: FastifyReply): Promise<FastifyReply | undefined> => {
       const headerResult = extractHeaders(headerNames, (name) => {
         const val = request.headers[name];
         return Array.isArray(val) ? val[0] : val;
       });
 
       if ('missing' in headerResult) {
-        reply.code(400).send({ error: `Missing required header: ${headerResult.missing}` });
-        return;
+        const body = { error: `Missing required header: ${headerResult.missing}` };
+        return reply.code(400).send(body);
       }
 
       // Fastify parses JSON by default, so `request.body` is usually an object. The raw bytes
@@ -68,13 +71,14 @@ export function webhookPlugin(
           nonceValidator: options.nonceValidator,
         });
         request.webhookVerified = true;
+        return undefined;
       } catch (error: unknown) {
         if (options.onError) {
           options.onError(error);
         }
         const status = mapErrorToStatus(error);
         const body = mapErrorToBody(error);
-        reply.code(status).send(body);
+        return reply.code(status).send(body);
       }
     },
   );

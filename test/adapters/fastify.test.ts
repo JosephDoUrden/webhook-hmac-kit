@@ -299,3 +299,69 @@ describe('Fastify webhookPlugin', () => {
     expect(onError).toHaveBeenCalled();
   });
 });
+
+// An async hook that has already answered has to return the reply. Without it Fastify never learns
+// the response went out and carries on into the route handler, which runs its side effects and
+// then fails with FST_ERR_REP_ALREADY_SENT.
+describe('Fastify webhookPlugin reply handling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function hookFor(options: Parameters<typeof webhookPlugin>[1]) {
+    const fastify = createMockFastify();
+    webhookPlugin(fastify, options, vi.fn());
+    return fastify.decorations.verifyWebhook as (
+      req: ReturnType<typeof createMockRequest>,
+      rep: ReturnType<typeof createMockReply>,
+    ) => Promise<unknown>;
+  }
+
+  it('returns the reply after answering a verification failure', async () => {
+    const request = createMockRequest({
+      headers: {
+        'x-webhook-signature': `v2=${'a'.repeat(64)}`,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const reply = createMockReply();
+
+    const result = await hookFor({ secrets: TEST_SECRET })(request, reply);
+
+    expect(result).toBe(reply);
+    expect(reply.statusCode).toBe(401);
+  });
+
+  it('returns the reply after answering a missing header', async () => {
+    const request = createMockRequest({ headers: {} });
+    const reply = createMockReply();
+
+    const result = await hookFor({ secrets: TEST_SECRET })(request, reply);
+
+    expect(result).toBe(reply);
+    expect(reply.statusCode).toBe(400);
+  });
+
+  it('returns nothing when verification succeeds, so the lifecycle continues', async () => {
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const request = createMockRequest({
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const reply = createMockReply();
+
+    const result = await hookFor({ secrets: TEST_SECRET })(request, reply);
+
+    expect(result).toBeUndefined();
+    expect(request.webhookVerified).toBe(true);
+  });
+});
