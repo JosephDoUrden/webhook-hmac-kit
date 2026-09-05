@@ -1,7 +1,10 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { utf8 } from '../src/bytes.js';
+import { getSubtle } from '../src/crypto.js';
+import { WebhookError } from '../src/errors.js';
 import { signWebhook } from '../src/signer.js';
-import { TEST_SECRET, vectors } from './vectors.js';
+import { signStandardWebhooks } from '../src/standard-webhooks.js';
+import { TEST_SECRET, TEST_TIMESTAMP, vectors } from './vectors.js';
 
 describe('signWebhook', () => {
   for (const vector of vectors) {
@@ -147,4 +150,61 @@ describe('signWebhook payload type guard', () => {
       ).toThrow(/payload/);
     });
   }
+});
+
+/**
+ * The verify side already refuses a degenerate primitive. The sign side has to as well, and for a
+ * worse reason: a short MAC there does not fail, it ships. `v2=` with eight hex characters, or a
+ * `v1,` entry that decodes to nothing, goes out over the wire and is a signature in name only.
+ */
+describe('a degenerate Web Crypto on the sign path', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    ['empty buffers', 0],
+    ['truncated buffers', 16],
+    ['oversized buffers', 64],
+  ])('refuses to sign when sign returns %s', async (_name, size) => {
+    vi.spyOn(getSubtle(), 'sign').mockResolvedValue(new ArrayBuffer(size));
+
+    await expect(
+      signWebhook({
+        secrets: TEST_SECRET,
+        payload: '{"a":1}',
+        timestamp: TEST_TIMESTAMP,
+        nonce: 'nonce_degenerate',
+      }),
+    ).rejects.toThrow(/32 bytes/);
+  });
+
+  it('refuses to sign a Standard Webhooks message on the same runtime', async () => {
+    vi.spyOn(getSubtle(), 'sign').mockResolvedValue(new ArrayBuffer(0));
+
+    await expect(
+      signStandardWebhooks({
+        secrets: 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw',
+        messageId: 'msg_degenerate',
+        timestamp: TEST_TIMESTAMP,
+        payload: '{"a":1}',
+      }),
+    ).rejects.toThrow(/32 bytes/);
+  });
+
+  // A signer that cannot sign is the machine being broken, not a webhook being rejected. Making it
+  // a WebhookError would let an adapter answer 401 for it.
+  it('reports a broken runtime rather than a failed verification', async () => {
+    vi.spyOn(getSubtle(), 'sign').mockResolvedValue(new ArrayBuffer(0));
+
+    const error = await signWebhook({
+      secrets: TEST_SECRET,
+      payload: '{"a":1}',
+      timestamp: TEST_TIMESTAMP,
+      nonce: 'nonce_degenerate',
+    }).catch((caught: unknown) => caught);
+
+    expect(error).toBeInstanceOf(Error);
+    expect(error).not.toBeInstanceOf(WebhookError);
+  });
 });

@@ -14,7 +14,28 @@ const DIGEST_BYTES = 32;
 
 const DEGENERATE_HMAC =
   'Web Crypto returned an HMAC-SHA256 signature that is not 32 bytes, so this runtime cannot ' +
-  'verify webhooks correctly';
+  'sign or verify webhooks correctly';
+
+/**
+ * Fail closed on a primitive that is not doing its job.
+ *
+ * Both directions need this and for different reasons. On verify, the fold says two values agree
+ * when it finds no difference between them, and it finds no difference between two empty runs, so
+ * a subtle.sign returning nothing made every blinded value identical and a forged signature
+ * verified. On sign there is no comparison to fool: a short MAC simply ships, as `v2=` with eight
+ * hex characters or a `v1,` entry that decodes to nothing, and is a signature in name only.
+ *
+ * Nobody can make Web Crypto misbehave from outside, so neither is attacker-reachable; this is
+ * about which way a broken runtime fails. Not a WebhookError, deliberately: the adapters answer
+ * those with 401, which would blame the caller for the receiver being broken. Same reasoning as
+ * WebCryptoUnavailableError, which is also outside that hierarchy.
+ */
+function assertDigestSize(mac: ArrayBuffer): ArrayBuffer {
+  if (mac.byteLength !== DIGEST_BYTES) {
+    throw new Error(`${DEGENERATE_HMAC} (got ${mac.byteLength})`);
+  }
+  return mac;
+}
 
 /**
  * Web Crypto's types, derived from the global rather than named.
@@ -93,7 +114,9 @@ export function importHmacKey(keyBytes: Uint8Array): Promise<HmacKey> {
 export async function hmacSha256(keyBytes: Uint8Array, data: Uint8Array): Promise<Uint8Array> {
   const subtle = getSubtle();
   const key = await importHmacKey(keyBytes);
-  return new Uint8Array(await subtle.sign(HMAC_SHA256.name, key, bufferSource(data)));
+  return new Uint8Array(
+    assertDigestSize(await subtle.sign(HMAC_SHA256.name, key, bufferSource(data))),
+  );
 }
 
 /**
@@ -189,22 +212,9 @@ export async function blindMany(digests: Uint8Array[]): Promise<Uint8Array[]> {
     digests.map((digest) => subtle.sign(HMAC_SHA256.name, blindingKey, bufferSource(digest))),
   );
 
-  // Fail closed on a primitive that is not doing its job. The fold that follows says two values
-  // agree when it finds no difference between them, and it finds no difference between two empty
-  // runs — so a subtle.sign returning nothing made every blinded value identical and a forged
-  // signature verified. Nobody can make Web Crypto return empty buffers from outside, so this is
-  // not an attacker-reachable path; it is the direction the failure has to go in. A short or long
-  // digest is the same class of problem and is refused the same way.
-  //
-  // Not a WebhookError, deliberately: the adapters answer those with 401, which would tell a
-  // caller its signature was wrong when the truth is that this end cannot check signatures at all.
-  // Same reasoning as WebCryptoUnavailableError, which is also outside that hierarchy.
-  return blinded.map((value) => {
-    if (value.byteLength !== DIGEST_BYTES) {
-      throw new Error(`${DEGENERATE_HMAC} (got ${value.byteLength})`);
-    }
-    return new Uint8Array(value);
-  });
+  // Same guard as hmacSha256, and see assertDigestSize for why the fold in particular cannot be
+  // left to meet an empty operand.
+  return blinded.map((value) => new Uint8Array(assertDigestSize(value)));
 }
 
 /**

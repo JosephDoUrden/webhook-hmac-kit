@@ -24,13 +24,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
-- `verifyWebhook` and `verifyStandardWebhooks` no longer answer `{ valid: true }` when
-  `subtle.sign` returns buffers of the wrong size. An empty return made every blinded
-  value the same empty run, the constant-time fold found no difference between them,
-  and a forged signature verified. Present since 2.0.0 and reachable only on a broken
-  or tampered runtime, since nothing an attacker sends can change what Web Crypto
-  returns. It now throws a plain `Error`, not a `WebhookError`: the receiver is broken
-  rather than the request being wrong, so adapters answer 500 and not 401.
+- All four of `signWebhook`, `verifyWebhook`, `signStandardWebhooks` and
+  `verifyStandardWebhooks` now refuse to proceed when `subtle.sign` returns a buffer
+  that is not 32 bytes. On the verify side an empty return made every blinded value the
+  same empty run, the constant-time fold found no difference between them, and a forged
+  signature verified. On the sign side there was no comparison to fool: a short MAC
+  shipped, as `v2=` with eight hex characters or a `v1,` entry decoding to nothing.
+  Present since 2.0.0 and reachable only on a broken or tampered runtime, since nothing
+  an attacker sends can change what Web Crypto returns. It now throws a plain `Error`,
+  not a `WebhookError`: the machine is broken rather than the request being wrong, so
+  adapters answer 500 and not 401.
 
 ### Changed
 
