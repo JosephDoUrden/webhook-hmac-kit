@@ -8,8 +8,8 @@ const firstVector = {
   nonce: 'nonce_abc123',
 };
 
-function signPayload(payload: string, timestamp: number, nonce: string) {
-  return signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce }).signature;
+async function signPayload(payload: string, timestamp: number, nonce: string) {
+  return (await signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce })).signature;
 }
 
 function createMockRequest(overrides: Record<string, unknown> = {}) {
@@ -79,7 +79,7 @@ describe('Fastify webhookPlugin', () => {
     const done = vi.fn();
     webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
 
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
       headers: {
         'x-webhook-signature': signature,
@@ -104,7 +104,7 @@ describe('Fastify webhookPlugin', () => {
     const done = vi.fn();
     webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
 
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
       rawBody: Buffer.from(firstVector.payload),
       body: JSON.parse(firstVector.payload),
@@ -172,7 +172,7 @@ describe('Fastify webhookPlugin', () => {
     const done = vi.fn();
     webhookPlugin(fastify, { secrets: TEST_SECRET }, done);
 
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
       headers: {
         'x-webhook-signature': signature,
@@ -197,7 +197,7 @@ describe('Fastify webhookPlugin', () => {
     const done = vi.fn();
     webhookPlugin(fastify, { secrets: TEST_SECRET, nonceValidator: async () => false }, done);
 
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
       headers: {
         'x-webhook-signature': signature,
@@ -223,7 +223,7 @@ describe('Fastify webhookPlugin', () => {
     const done = vi.fn();
     webhookPlugin(fastify, { secrets: TEST_SECRET, onError }, done);
 
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
       body: JSON.parse(firstVector.payload),
       headers: {
@@ -260,7 +260,7 @@ describe('Fastify webhookPlugin', () => {
       done,
     );
 
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
       headers: {
         'x-sig': signature,
@@ -353,7 +353,7 @@ describe('Fastify webhookPlugin reply handling', () => {
   });
 
   it('returns nothing when verification succeeds, so the lifecycle continues', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
       headers: {
         'x-webhook-signature': signature,
@@ -384,7 +384,7 @@ describe('Fastify webhookPlugin header handling', () => {
     const fastify = createMockFastify();
     webhookPlugin(fastify, { secrets: TEST_SECRET }, vi.fn());
 
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const request = createMockRequest({
       headers: {
         'x-webhook-signature': [signature, `v2=${'b'.repeat(64)}`],

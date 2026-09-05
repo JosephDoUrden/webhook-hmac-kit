@@ -14,14 +14,14 @@ describe('resolveRawBody', () => {
     expect(resolveRawBody({ body })).toBe(body);
   });
 
-  it('signs a Uint8Array body the same as the Buffer of those bytes', () => {
+  it('signs a Uint8Array body the same as the Buffer of those bytes', async () => {
     const bytes = [1, 2, 3];
     const opts = { secrets: TEST_SECRET, timestamp: TEST_TIMESTAMP, nonce: 'n' };
-    const asArray = signWebhook({
+    const asArray = await signWebhook({
       ...opts,
       payload: resolveRawBody({ body: Uint8Array.from(bytes) }),
     });
-    const asBuffer = signWebhook({
+    const asBuffer = await signWebhook({
       ...opts,
       payload: resolveRawBody({ body: Buffer.from(bytes) }),
     });

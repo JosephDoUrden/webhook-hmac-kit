@@ -13,8 +13,8 @@ const firstVector = {
   nonce: 'nonce_abc123',
 };
 
-function signPayload(payload: string, timestamp: number, nonce: string) {
-  return signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce }).signature;
+async function signPayload(payload: string, timestamp: number, nonce: string) {
+  return (await signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce })).signature;
 }
 
 function createMockContext(overrides: Record<string, unknown> = {}) {
@@ -48,7 +48,7 @@ describe('NestJS WebhookGuard', () => {
   });
 
   it('returns true for valid webhook', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
         'x-webhook-signature': signature,
@@ -65,7 +65,7 @@ describe('NestJS WebhookGuard', () => {
   });
 
   it('handles Buffer body', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       body: Buffer.from(firstVector.payload),
       headers: {
@@ -119,7 +119,7 @@ describe('NestJS WebhookGuard', () => {
 
   it('throws HttpException(401) for expired timestamp', async () => {
     vi.setSystemTime((TEST_TIMESTAMP + 600) * 1000);
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
         'x-webhook-signature': signature,
@@ -140,7 +140,7 @@ describe('NestJS WebhookGuard', () => {
   });
 
   it('throws HttpException(401) for replayed nonce', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
         'x-webhook-signature': signature,
@@ -164,7 +164,7 @@ describe('NestJS WebhookGuard', () => {
   });
 
   it('uses rawBody when the framework provides it alongside a parsed body', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       body: JSON.parse(firstVector.payload),
       rawBody: Buffer.from(firstVector.payload),
@@ -181,7 +181,7 @@ describe('NestJS WebhookGuard', () => {
 
   it('reports a parsed body as a configuration error, through onError', async () => {
     const onError = vi.fn();
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       body: JSON.parse(firstVector.payload),
       headers: {
@@ -207,7 +207,7 @@ describe('NestJS WebhookGuard', () => {
   });
 
   it('supports custom header names', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
         'x-custom-sig': signature,
@@ -275,7 +275,7 @@ describe('NestJS WebhookGuard header handling', () => {
   });
 
   it('rejects a header the framework kept as two values', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
         'x-webhook-signature': [signature, `v2=${'b'.repeat(64)}`],

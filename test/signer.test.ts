@@ -1,11 +1,12 @@
 import { describe, expect, it } from 'vitest';
+import { utf8 } from '../src/bytes.js';
 import { signWebhook } from '../src/signer.js';
 import { TEST_SECRET, vectors } from './vectors.js';
 
 describe('signWebhook', () => {
   for (const vector of vectors) {
-    it(`produces expected signature for: ${vector.name}`, () => {
-      const result = signWebhook({
+    it(`produces expected signature for: ${vector.name}`, async () => {
+      const result = await signWebhook({
         secrets: TEST_SECRET,
         payload: vector.payload,
         timestamp: vector.timestamp,
@@ -15,8 +16,8 @@ describe('signWebhook', () => {
     });
   }
 
-  it('emits the scheme version and a lower-case hex digest on the wire', () => {
-    const { signature } = signWebhook({
+  it('emits the scheme version and a lower-case hex digest on the wire', async () => {
+    const { signature } = await signWebhook({
       secrets: TEST_SECRET,
       payload: 'test',
       timestamp: 1000,
@@ -52,43 +53,43 @@ describe('signWebhook', () => {
     }
   });
 
-  it('is deterministic: same inputs produce same output', () => {
+  it('is deterministic: same inputs produce same output', async () => {
     const opts = {
       secrets: TEST_SECRET,
       payload: 'determinism',
       timestamp: 1000,
       nonce: 'n',
     };
-    const a = signWebhook(opts);
-    const b = signWebhook(opts);
+    const a = await signWebhook(opts);
+    const b = await signWebhook(opts);
     expect(a.signature).toBe(b.signature);
   });
 
-  it('produces different signature with different secret', () => {
+  it('produces different signature with different secret', async () => {
     const opts = { payload: 'test', timestamp: 1000, nonce: 'n' };
-    const a = signWebhook({ ...opts, secrets: 'secret-a' });
-    const b = signWebhook({ ...opts, secrets: 'secret-b' });
+    const a = await signWebhook({ ...opts, secrets: 'secret-a' });
+    const b = await signWebhook({ ...opts, secrets: 'secret-b' });
     expect(a.signature).not.toBe(b.signature);
   });
 
-  it('produces different signature with different payload', () => {
+  it('produces different signature with different payload', async () => {
     const opts = { secrets: TEST_SECRET, timestamp: 1000, nonce: 'n' };
-    const a = signWebhook({ ...opts, payload: 'payload-a' });
-    const b = signWebhook({ ...opts, payload: 'payload-b' });
+    const a = await signWebhook({ ...opts, payload: 'payload-a' });
+    const b = await signWebhook({ ...opts, payload: 'payload-b' });
     expect(a.signature).not.toBe(b.signature);
   });
 
-  it('produces different signature with different timestamp', () => {
+  it('produces different signature with different timestamp', async () => {
     const opts = { secrets: TEST_SECRET, payload: 'test', nonce: 'n' };
-    const a = signWebhook({ ...opts, timestamp: 1000 });
-    const b = signWebhook({ ...opts, timestamp: 2000 });
+    const a = await signWebhook({ ...opts, timestamp: 1000 });
+    const b = await signWebhook({ ...opts, timestamp: 2000 });
     expect(a.signature).not.toBe(b.signature);
   });
 
-  it('produces different signature with different nonce', () => {
+  it('produces different signature with different nonce', async () => {
     const opts = { secrets: TEST_SECRET, payload: 'test', timestamp: 1000 };
-    const a = signWebhook({ ...opts, nonce: 'nonce-a' });
-    const b = signWebhook({ ...opts, nonce: 'nonce-b' });
+    const a = await signWebhook({ ...opts, nonce: 'nonce-a' });
+    const b = await signWebhook({ ...opts, nonce: 'nonce-b' });
     expect(a.signature).not.toBe(b.signature);
   });
 });
@@ -99,36 +100,36 @@ describe('signWebhook with byte inputs', () => {
   const timestamp = 1000;
   const nonce = 'n';
 
-  it('signs a string payload and its UTF-8 bytes identically', () => {
+  it('signs a string payload and its UTF-8 bytes identically', async () => {
     const payload = '{"name":"Héllo Wörld","emoji":"🚀"}';
-    const asText = signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
-    const asBytes = signWebhook({
+    const asText = await signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
+    const asBytes = await signWebhook({
       secrets: TEST_SECRET,
-      payload: Buffer.from(payload, 'utf8'),
+      payload: utf8(payload),
       timestamp,
       nonce,
     });
     expect(asBytes.signature).toBe(asText.signature);
   });
 
-  it('distinguishes byte payloads that UTF-8 decoding would collapse', () => {
+  it('distinguishes byte payloads that UTF-8 decoding would collapse', async () => {
     const opts = { secrets: TEST_SECRET, timestamp, nonce };
-    const a = signWebhook({ ...opts, payload: Uint8Array.from([0x7b, 0xff, 0x7d]) });
-    const b = signWebhook({ ...opts, payload: Uint8Array.from([0x7b, 0xfe, 0x7d]) });
+    const a = await signWebhook({ ...opts, payload: Uint8Array.from([0x7b, 0xff, 0x7d]) });
+    const b = await signWebhook({ ...opts, payload: Uint8Array.from([0x7b, 0xfe, 0x7d]) });
     expect(a.signature).not.toBe(b.signature);
   });
 
-  it('signs with a string secret and its UTF-8 bytes identically', () => {
+  it('signs with a string secret and its UTF-8 bytes identically', async () => {
     const opts = { payload: 'test', timestamp, nonce };
-    const asText = signWebhook({ ...opts, secrets: TEST_SECRET });
-    const asBytes = signWebhook({ ...opts, secrets: Buffer.from(TEST_SECRET, 'utf8') });
+    const asText = await signWebhook({ ...opts, secrets: TEST_SECRET });
+    const asBytes = await signWebhook({ ...opts, secrets: utf8(TEST_SECRET) });
     expect(asBytes.signature).toBe(asText.signature);
   });
 
-  it('distinguishes binary secrets that UTF-8 decoding would collapse', () => {
+  it('distinguishes binary secrets that UTF-8 decoding would collapse', async () => {
     const opts = { payload: 'test', timestamp, nonce };
-    const a = signWebhook({ ...opts, secrets: Uint8Array.from([0xff]) });
-    const b = signWebhook({ ...opts, secrets: Uint8Array.from([0xfe]) });
+    const a = await signWebhook({ ...opts, secrets: Uint8Array.from([0xff]) });
+    const b = await signWebhook({ ...opts, secrets: Uint8Array.from([0xfe]) });
     expect(a.signature).not.toBe(b.signature);
   });
 });

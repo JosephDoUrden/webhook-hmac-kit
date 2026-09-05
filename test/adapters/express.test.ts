@@ -33,8 +33,8 @@ function createMockRes() {
   return res;
 }
 
-function signPayload(payload: string, timestamp: number, nonce: string) {
-  return signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce }).signature;
+async function signPayload(payload: string, timestamp: number, nonce: string) {
+  return (await signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce })).signature;
 }
 
 describe('Express webhookVerifier middleware', () => {
@@ -48,7 +48,7 @@ describe('Express webhookVerifier middleware', () => {
   });
 
   it('calls next() on valid webhook', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-webhook-signature': signature,
@@ -67,7 +67,7 @@ describe('Express webhookVerifier middleware', () => {
   });
 
   it('handles string body', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       body: firstVector.payload,
       headers: {
@@ -155,7 +155,7 @@ describe('Express webhookVerifier middleware', () => {
 
   it('returns 401 for expired timestamp, with the detail only in onError', async () => {
     vi.setSystemTime((TEST_TIMESTAMP + 600) * 1000);
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-webhook-signature': signature,
@@ -175,7 +175,7 @@ describe('Express webhookVerifier middleware', () => {
   });
 
   it('returns 401 for a non-integer timestamp header', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-webhook-signature': signature,
@@ -195,7 +195,7 @@ describe('Express webhookVerifier middleware', () => {
   });
 
   it('returns 401 for replayed nonce, with the detail only in onError', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-webhook-signature': signature,
@@ -220,12 +220,14 @@ describe('Express webhookVerifier middleware', () => {
   });
 
   it('accepts a signature made with a retiring secret', async () => {
-    const signature = signWebhook({
-      secrets: 'whsec_old',
-      payload: firstVector.payload,
-      timestamp: TEST_TIMESTAMP,
-      nonce: firstVector.nonce,
-    }).signature;
+    const signature = (
+      await signWebhook({
+        secrets: 'whsec_old',
+        payload: firstVector.payload,
+        timestamp: TEST_TIMESTAMP,
+        nonce: firstVector.nonce,
+      })
+    ).signature;
     const req = createMockReq({
       headers: {
         'x-webhook-signature': signature,
@@ -264,7 +266,7 @@ describe('Express webhookVerifier middleware', () => {
   });
 
   it('supports custom header names', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-custom-sig': signature,
@@ -320,14 +322,16 @@ describe('Express webhookVerifier with byte bodies', () => {
     vi.useRealTimers();
   });
 
-  function headersFor(body: Buffer) {
+  async function headersFor(body: Uint8Array) {
     return {
-      'x-webhook-signature': signWebhook({
-        secrets: TEST_SECRET,
-        payload: body,
-        timestamp: TEST_TIMESTAMP,
-        nonce,
-      }).signature,
+      'x-webhook-signature': (
+        await signWebhook({
+          secrets: TEST_SECRET,
+          payload: body,
+          timestamp: TEST_TIMESTAMP,
+          nonce,
+        })
+      ).signature,
       'x-webhook-timestamp': String(TEST_TIMESTAMP),
       'x-webhook-nonce': nonce,
     };
@@ -335,7 +339,7 @@ describe('Express webhookVerifier with byte bodies', () => {
 
   it('verifies a body that is not valid UTF-8', async () => {
     const body = Buffer.from([0x7b, 0xff, 0x7d]);
-    const req = createMockReq({ body, headers: headersFor(body) });
+    const req = createMockReq({ body, headers: await headersFor(body) });
     const res = createMockRes();
     const next = vi.fn();
 
@@ -348,7 +352,7 @@ describe('Express webhookVerifier with byte bodies', () => {
   it('rejects a body that differs from the signed one only outside valid UTF-8', async () => {
     const req = createMockReq({
       body: Buffer.from([0x7b, 0xfe, 0x7d]),
-      headers: headersFor(Buffer.from([0x7b, 0xff, 0x7d])),
+      headers: await headersFor(Buffer.from([0x7b, 0xff, 0x7d])),
     });
     const res = createMockRes();
     const next = vi.fn();
@@ -371,7 +375,7 @@ describe('Express webhookVerifier header handling', () => {
   });
 
   it('rejects a timestamp header with leading zeros', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-webhook-signature': signature,
@@ -390,8 +394,8 @@ describe('Express webhookVerifier header handling', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
-  it('rejects a header the framework kept as two values', () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+  it('rejects a header the framework kept as two values', async () => {
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-webhook-signature': [signature, `v2=${'b'.repeat(64)}`],
@@ -410,7 +414,7 @@ describe('Express webhookVerifier header handling', () => {
   });
 
   it('matches a configured header name that was written in header case', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-custom-sig': signature,
@@ -433,7 +437,7 @@ describe('Express webhookVerifier header handling', () => {
   });
 
   it('accepts a header the framework kept as a single-entry array', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-webhook-signature': [signature],
@@ -452,7 +456,7 @@ describe('Express webhookVerifier header handling', () => {
 
   it('answers 401 when the nonce validator throws, with the cause in onError', async () => {
     const storeError = new Error('Redis connection failed');
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({
       headers: {
         'x-webhook-signature': signature,
@@ -485,9 +489,9 @@ describe('Express webhookVerifier header handling', () => {
 describe('Express webhookVerifier failure isolation', () => {
   const timestamp = Math.floor(Date.now() / 1000);
 
-  function validHeaders() {
+  async function validHeaders() {
     return {
-      'x-webhook-signature': signPayload(firstVector.payload, timestamp, firstVector.nonce),
+      'x-webhook-signature': await signPayload(firstVector.payload, timestamp, firstVector.nonce),
       'x-webhook-timestamp': String(timestamp),
       'x-webhook-nonce': firstVector.nonce,
     };
@@ -495,7 +499,7 @@ describe('Express webhookVerifier failure isolation', () => {
 
   it('does not treat a throw from the downstream handler as a verification failure', async () => {
     const downstreamError = new Error('the route handler blew up');
-    const req = createMockReq({ headers: validHeaders() });
+    const req = createMockReq({ headers: await validHeaders() });
     const res = createMockRes();
     const onError = vi.fn();
     let calls = 0;

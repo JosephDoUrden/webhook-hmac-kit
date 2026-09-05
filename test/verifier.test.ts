@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { utf8 } from '../src/bytes.js';
 import { WebhookNonceError, WebhookSignatureError, WebhookTimestampError } from '../src/errors.js';
 import { signWebhook } from '../src/signer.js';
 import { verifyWebhook } from '../src/verifier.js';
@@ -395,7 +396,7 @@ describe('verifyWebhook', () => {
 
     it('rejects a fractional timestamp even when it is inside the window', async () => {
       const timestamp = TEST_TIMESTAMP + 0.5;
-      const { signature } = signWebhook({
+      const { signature } = await signWebhook({
         secrets: TEST_SECRET,
         payload: 'x',
         timestamp: TEST_TIMESTAMP,
@@ -532,7 +533,7 @@ describe('verifyWebhook', () => {
       const timestamp = TEST_TIMESTAMP;
       const nonce = 'round-trip-nonce';
 
-      const { signature } = signWebhook({
+      const { signature } = await signWebhook({
         secrets: TEST_SECRET,
         payload,
         timestamp,
@@ -566,7 +567,7 @@ describe('byte-exact payloads and secrets', () => {
   });
 
   it('rejects a body whose bytes differ only outside valid UTF-8', async () => {
-    const { signature } = signWebhook({
+    const { signature } = await signWebhook({
       secrets: TEST_SECRET,
       payload: Uint8Array.from([0x7b, 0xff, 0x7d]),
       timestamp,
@@ -586,12 +587,12 @@ describe('byte-exact payloads and secrets', () => {
 
   it('accepts the UTF-8 bytes of a payload that was signed as a string', async () => {
     const payload = '{"event":"payment.completed"}';
-    const { signature } = signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
+    const { signature } = await signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
 
     await expect(
       verifyWebhook({
         secrets: TEST_SECRET,
-        payload: Buffer.from(payload, 'utf8'),
+        payload: utf8(payload),
         signature,
         timestamp,
         nonce,
@@ -600,7 +601,7 @@ describe('byte-exact payloads and secrets', () => {
   });
 
   it('rejects a binary secret whose bytes differ only outside valid UTF-8', async () => {
-    const { signature } = signWebhook({
+    const { signature } = await signWebhook({
       secrets: Uint8Array.from([0xff]),
       payload: 'x',
       timestamp,

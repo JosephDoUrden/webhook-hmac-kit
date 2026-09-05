@@ -1,5 +1,6 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
+import { bytesEqual, utf8 } from '../src/bytes.js';
 import { NONCE_PATTERN, buildCanonicalString } from '../src/canonical.js';
 import { WebhookNonceError } from '../src/errors.js';
 import { signWebhook } from '../src/signer.js';
@@ -112,39 +113,37 @@ function decode(canonical: string): Fields | null {
 
 // A payload's identity is its bytes. A string is UTF-8 text, so 'a' and the byte 0x61 are the same
 // message; two byte payloads that would decode to the same replacement character are not.
-function payloadBytes(payload: string | Uint8Array): Buffer {
-  return typeof payload === 'string' ? Buffer.from(payload, 'utf8') : Buffer.from(payload);
+function payloadBytes(payload: string | Uint8Array): Uint8Array {
+  return typeof payload === 'string' ? utf8(payload) : payload;
 }
 
 function sameMessage(a: SignableFields, b: SignableFields): boolean {
   return (
     a.timestamp === b.timestamp &&
     a.nonce === b.nonce &&
-    payloadBytes(a.payload).equals(payloadBytes(b.payload))
+    bytesEqual(payloadBytes(a.payload), payloadBytes(b.payload))
   );
 }
 
-function sign(fields: SignableFields): string {
-  return signWebhook({ secrets: TEST_SECRET, ...fields }).signature;
+async function sign(fields: SignableFields): Promise<string> {
+  return (await signWebhook({ secrets: TEST_SECRET, ...fields })).signature;
 }
 
 describe('canonical encoding is injective', () => {
-  it('gives distinct signatures to distinct (timestamp, nonce, payload) triples', () => {
-    fc.assert(
-      fc.property(triplePairArb, ([a, b]) => {
+  it('gives distinct signatures to distinct (timestamp, nonce, payload) triples', async () => {
+    await fc.assert(
+      fc.asyncProperty(triplePairArb, async ([a, b]) => {
         fc.pre(!sameMessage(a, b));
-        expect(sign(a)).not.toBe(sign(b));
+        expect(await sign(a)).not.toBe(await sign(b));
       }),
       { numRuns: 2000 },
     );
   });
 
-  it('signs a string payload and its UTF-8 bytes identically', () => {
-    fc.assert(
-      fc.property(fieldsArb, (fields) => {
-        expect(sign({ ...fields, payload: Buffer.from(fields.payload, 'utf8') })).toBe(
-          sign(fields),
-        );
+  it('signs a string payload and its UTF-8 bytes identically', async () => {
+    await fc.assert(
+      fc.asyncProperty(fieldsArb, async (fields) => {
+        expect(await sign({ ...fields, payload: utf8(fields.payload) })).toBe(await sign(fields));
       }),
       { numRuns: 1000 },
     );
@@ -186,7 +185,12 @@ describe('canonical encoding is injective', () => {
 
     await fc.assert(
       fc.asyncProperty(nonceArb, payloadArb, async (nonce, payload) => {
-        const { signature } = signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
+        const { signature } = await signWebhook({
+          secrets: TEST_SECRET,
+          payload,
+          timestamp,
+          nonce,
+        });
         const rest = `${nonce}.${payload}`;
 
         for (let i = 0; i < rest.length; i++) {
@@ -210,7 +214,7 @@ describe('canonical encoding is injective', () => {
 describe('the v1 collision (audit finding 1) no longer verifies', () => {
   it('re-splitting at a colon is rejected because the nonce grammar forbids colons', async () => {
     const timestamp = Math.floor(Date.now() / 1000);
-    const { signature } = signWebhook({
+    const { signature } = await signWebhook({
       secrets: TEST_SECRET,
       payload: 'a:b:c',
       timestamp,
@@ -229,7 +233,7 @@ describe('the v1 collision (audit finding 1) no longer verifies', () => {
 
   it('re-splitting at a dot is rejected for the same reason', async () => {
     const timestamp = Math.floor(Date.now() / 1000);
-    const { signature } = signWebhook({
+    const { signature } = await signWebhook({
       secrets: TEST_SECRET,
       payload: 'a.b.c',
       timestamp,
@@ -257,7 +261,7 @@ describe('the v1 collision (audit finding 1) no longer verifies', () => {
 
     const nonce = 'abc';
     const payload = 'a.b:c';
-    const { signature } = signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
+    const { signature } = await signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
 
     await expect(
       verifyWebhook({ secrets: TEST_SECRET, payload, signature, timestamp, nonce, nonceValidator }),

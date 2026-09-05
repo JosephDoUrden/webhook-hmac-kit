@@ -32,14 +32,14 @@ describe('secret rotation', () => {
     vi.useRealTimers();
   });
 
-  it('signs with the first secret in the list', () => {
-    const list = signWebhook({
+  it('signs with the first secret in the list', async () => {
+    const list = await signWebhook({
       secrets: [TEST_SECRET, OLD_SECRET],
       payload,
       timestamp: TEST_TIMESTAMP,
       nonce,
     });
-    const single = signWebhook({
+    const single = await signWebhook({
       secrets: TEST_SECRET,
       payload,
       timestamp: TEST_TIMESTAMP,
@@ -49,7 +49,7 @@ describe('secret rotation', () => {
   });
 
   it('verifies when the matching secret is not the first one', async () => {
-    const { signature } = signWebhook({
+    const { signature } = await signWebhook({
       secrets: OLD_SECRET,
       payload,
       timestamp: TEST_TIMESTAMP,
@@ -68,7 +68,7 @@ describe('secret rotation', () => {
   });
 
   it('verifies when the matching secret is the first one', async () => {
-    const { signature } = signWebhook({
+    const { signature } = await signWebhook({
       secrets: TEST_SECRET,
       payload,
       timestamp: TEST_TIMESTAMP,
@@ -87,7 +87,7 @@ describe('secret rotation', () => {
   });
 
   it('rejects when no secret in the list matches', async () => {
-    const { signature } = signWebhook({
+    const { signature } = await signWebhook({
       secrets: 'whsec_retired_key',
       payload,
       timestamp: TEST_TIMESTAMP,
@@ -106,7 +106,7 @@ describe('secret rotation', () => {
   });
 
   it('evaluates every candidate even after the first one matches', async () => {
-    const { signature } = signWebhook({
+    const { signature } = await signWebhook({
       secrets: TEST_SECRET,
       payload,
       timestamp: TEST_TIMESTAMP,
@@ -197,7 +197,7 @@ describe('secret list hygiene', () => {
   });
 
   it('evaluates a repeated secret once', async () => {
-    const { signature } = signWebhook({
+    const { signature } = await signWebhook({
       secrets: TEST_SECRET,
       payload,
       timestamp: TEST_TIMESTAMP,
