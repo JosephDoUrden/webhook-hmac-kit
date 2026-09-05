@@ -3,7 +3,7 @@
 # One-time setup required on npmjs.com:
 # 1. Settings → Publishing access → Trusted publisher: GitHub Actions
 # 2. Configure: owner = JosephDoUrden, repo = webhook-hmac-kit, workflow = release.yml
-# 3. Verify npm CLI on runner is ≥11.5.1 (Node 22 ships npm 10.x, must upgrade; see runner setup step)
+# 3. Verify npm CLI on runner is ≥11.5.1 (Node 24 ships npm 10.x, must upgrade; see runner setup step)
 #
 # npm trusted publishing via OIDC: https://docs.npmjs.com/trusted-publishers (accessed 05 Sep 2026)
 # Requires: npm ≥11.5.1, Node ≥22.14.0. GitHub-hosted runners only (self-hosted not yet supported).
@@ -15,12 +15,6 @@ on:
   release:
     types: [published]
   workflow_dispatch:
-    inputs:
-      dry-run:
-        description: 'Run npm publish --dry-run to preview the package'
-        required: false
-        default: 'false'
-        type: boolean
 
 permissions:
   contents: read
@@ -39,9 +33,9 @@ jobs:
           node-version: 24
           cache: npm
 
-      # npm 10.x ships with Node 24; upgrade to ≥11.5.1 for OIDC support
+      # npm 10.x ships with Node 24; upgrade to npm 11 for OIDC support (11.5.1+ required)
       - name: Upgrade npm for OIDC support
-        run: npm install -g npm@latest
+        run: npm install -g npm@11
 
       - name: Verify versions
         run: |
@@ -63,31 +57,27 @@ jobs:
           test -f dist/index.d.cts
 
       - name: Check version matches tag
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          TAG: ${{ github.ref_name }}
         run: |
-          # For release events, extract version from tag; for workflow_dispatch, use package.json
-          if [[ "${{ github.event_name }}" == "release" ]]; then
-            TAG="${{ github.ref_name }}"
+          if [[ "$EVENT_NAME" == "release" ]]; then
             # Tag format: v2.0.0 → version 2.0.0
             if [[ ! "$TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
               echo "Error: Tag '$TAG' does not match semantic version pattern vX.Y.Z"
               exit 1
             fi
             EXPECTED_VERSION="${TAG#v}"
+            ACTUAL_VERSION=$(node -p "require('./package.json').version")
+            if [[ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]]; then
+              echo "Error: package.json version ($ACTUAL_VERSION) does not match tag version ($EXPECTED_VERSION)"
+              exit 1
+            fi
+            echo "Version verified: $ACTUAL_VERSION"
           else
-            EXPECTED_VERSION=$(node -p "require('./package.json').version")
+            # workflow_dispatch: just print the version
+            echo "Package version: $(node -p "require('./package.json').version")"
           fi
-
-          ACTUAL_VERSION=$(node -p "require('./package.json').version")
-
-          if [[ "$ACTUAL_VERSION" != "$EXPECTED_VERSION" ]]; then
-            echo "Error: package.json version ($ACTUAL_VERSION) does not match tag/expected version ($EXPECTED_VERSION)"
-            exit 1
-          fi
-
-          echo "Version verified: $ACTUAL_VERSION"
-
-      - name: Preview package contents
-        run: npm pack --dry-run
 
       - name: Attach npm pack preview to job summary
         if: always()
@@ -100,10 +90,10 @@ jobs:
             echo "\`\`\`"
           } >> $GITHUB_STEP_SUMMARY
 
-      - name: Publish to npm (dry-run)
-        if: github.event_name == 'workflow_dispatch' && inputs.dry-run == 'true'
+      - name: Publish to npm (dry-run on manual dispatch)
+        if: github.event_name == 'workflow_dispatch'
         run: npm publish --dry-run --provenance
 
       - name: Publish to npm
-        if: github.event_name == 'release' || (github.event_name == 'workflow_dispatch' && inputs.dry-run != 'true')
+        if: github.event_name == 'release'
         run: npm publish --provenance --access public
