@@ -10,6 +10,9 @@ import { TEST_SECRET } from './vectors.js';
 // v1 (`v1:{ts}:{nonce}:{payload}`) was not injective: nonce and payload were both free-form and
 // adjacent, so one signed message could be re-split into several (nonce, payload) pairs that all
 // verified. v2 puts the strict-integer timestamp between a dot-free nonce and the payload.
+//
+// The property that matters is over the signature, not over the canonical string. The string is a
+// string -> string map that was injective even while the bytes handed to the HMAC were not.
 
 interface Fields {
   timestamp: number;
@@ -17,8 +20,23 @@ interface Fields {
   payload: string;
 }
 
-const timestampArb = fc.nat({ max: Number.MAX_SAFE_INTEGER });
+interface SignableFields {
+  timestamp: number;
+  nonce: string;
+  payload: string | Uint8Array;
+}
+
+// fc.nat({max: MAX_SAFE_INTEGER}) biases so hard towards small values that a plausible epoch
+// second is almost never drawn, so the realistic range gets its own arm alongside the edge.
+const timestampArb = fc.oneof(
+  fc.integer({ min: 0, max: 4102444800 }),
+  fc.nat({ max: Number.MAX_SAFE_INTEGER }),
+);
 const nonceArb = fc.stringMatching(NONCE_PATTERN);
+
+// A grapheme unit is well formed by construction, so it never produces an unpaired surrogate and
+// the encoding of ill-formed text goes untested. This unit reaches it.
+const payloadUnitArb = fc.constantFrom('a', '.', ' ', '�', '\uD800', '\uDFFF');
 
 // Payloads biased towards the characters that could confuse a delimiter-based parser:
 // dots, digits, colons, and things that look like a nonce or a version tag.
@@ -30,6 +48,7 @@ const payloadArb = fc
       fc.constant('v2.'),
       fc.nat({ max: 99999 }).map(String),
       nonceArb,
+      fc.string({ unit: payloadUnitArb, maxLength: 8 }),
       fc.string({ unit: 'grapheme', maxLength: 8 }),
     ),
     { maxLength: 24 },
@@ -42,6 +61,44 @@ const fieldsArb: fc.Arbitrary<Fields> = fc.record({
   payload: payloadArb,
 });
 
+// Two byte payloads drawn at random practically never decode to the same text, so the second arm
+// draws from lead bytes that are invalid UTF-8 on their own: every one of them decodes to the same
+// replacement character, which is what a byte payload has to survive.
+const payloadBytesArb = fc.oneof(
+  fc.uint8Array({ maxLength: 24 }),
+  fc.uint8Array({ min: 0xf8, max: 0xff, maxLength: 4 }),
+);
+
+const signablePayloadArb = fc.oneof<fc.Arbitrary<string | Uint8Array>[]>(
+  payloadArb,
+  payloadBytesArb,
+);
+
+const signableFieldsArb: fc.Arbitrary<SignableFields> = fc.record({
+  timestamp: timestampArb,
+  nonce: nonceArb,
+  payload: signablePayloadArb,
+});
+
+// The second triple starts from the first and overrides some of its fields. Two independently
+// drawn triples practically never share a timestamp and a nonce, so the payload alone could never
+// be the difference between them and a payload collision would never be reached.
+const triplePairArb: fc.Arbitrary<[SignableFields, SignableFields]> = fc
+  .record({
+    base: signableFieldsArb,
+    timestamp: fc.option(timestampArb, { nil: undefined }),
+    nonce: fc.option(nonceArb, { nil: undefined }),
+    payload: fc.option(signablePayloadArb, { nil: undefined }),
+  })
+  .map(({ base, timestamp, nonce, payload }) => [
+    base,
+    {
+      timestamp: timestamp ?? base.timestamp,
+      nonce: nonce ?? base.nonce,
+      payload: payload ?? base.payload,
+    },
+  ]);
+
 // Test-side decoder. If build has a left inverse it is injective by construction.
 function decode(canonical: string): Fields | null {
   const match = /^v2\.(\d+)\.([A-Za-z0-9_-]{1,64})\.([\s\S]*)$/.exec(canonical);
@@ -53,28 +110,51 @@ function decode(canonical: string): Fields | null {
   };
 }
 
-function sameFields(a: Fields, b: Fields): boolean {
-  return a.timestamp === b.timestamp && a.nonce === b.nonce && a.payload === b.payload;
+// A payload's identity is its bytes. A string is UTF-8 text, so 'a' and the byte 0x61 are the same
+// message; two byte payloads that would decode to the same replacement character are not.
+function payloadBytes(payload: string | Uint8Array): Buffer {
+  return typeof payload === 'string' ? Buffer.from(payload, 'utf8') : Buffer.from(payload);
+}
+
+function sameMessage(a: SignableFields, b: SignableFields): boolean {
+  return (
+    a.timestamp === b.timestamp &&
+    a.nonce === b.nonce &&
+    payloadBytes(a.payload).equals(payloadBytes(b.payload))
+  );
+}
+
+function sign(fields: SignableFields): string {
+  return signWebhook({ secrets: TEST_SECRET, ...fields }).signature;
 }
 
 describe('canonical encoding is injective', () => {
-  it('decodes back to the exact fields it was built from (left inverse)', () => {
+  it('gives distinct signatures to distinct (timestamp, nonce, payload) triples', () => {
     fc.assert(
-      fc.property(fieldsArb, (fields) => {
-        const canonical = buildCanonicalString(fields.timestamp, fields.nonce, fields.payload);
-        expect(decode(canonical)).toEqual(fields);
+      fc.property(triplePairArb, ([a, b]) => {
+        fc.pre(!sameMessage(a, b));
+        expect(sign(a)).not.toBe(sign(b));
       }),
       { numRuns: 2000 },
     );
   });
 
-  it('distinct field triples never produce the same canonical string', () => {
+  it('signs a string payload and its UTF-8 bytes identically', () => {
     fc.assert(
-      fc.property(fieldsArb, fieldsArb, (a, b) => {
-        fc.pre(!sameFields(a, b));
-        expect(buildCanonicalString(a.timestamp, a.nonce, a.payload)).not.toBe(
-          buildCanonicalString(b.timestamp, b.nonce, b.payload),
+      fc.property(fieldsArb, (fields) => {
+        expect(sign({ ...fields, payload: Buffer.from(fields.payload, 'utf8') })).toBe(
+          sign(fields),
         );
+      }),
+      { numRuns: 1000 },
+    );
+  });
+
+  it('decodes back to the exact fields it was built from (left inverse)', () => {
+    fc.assert(
+      fc.property(fieldsArb, (fields) => {
+        const canonical = buildCanonicalString(fields.timestamp, fields.nonce, fields.payload);
+        expect(decode(canonical)).toEqual(fields);
       }),
       { numRuns: 2000 },
     );
