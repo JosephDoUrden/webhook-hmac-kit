@@ -535,3 +535,70 @@ describe('verifyWebhook', () => {
     });
   });
 });
+
+describe('byte-exact payloads and secrets', () => {
+  const timestamp = TEST_TIMESTAMP;
+  const nonce = 'byte_nonce';
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects a body whose bytes differ only outside valid UTF-8', async () => {
+    const { signature } = signWebhook({
+      secrets: TEST_SECRET,
+      payload: Uint8Array.from([0x7b, 0xff, 0x7d]),
+      timestamp,
+      nonce,
+    });
+
+    await expect(
+      verifyWebhook({
+        secrets: TEST_SECRET,
+        payload: Uint8Array.from([0x7b, 0xfe, 0x7d]),
+        signature,
+        timestamp,
+        nonce,
+      }),
+    ).rejects.toThrow(WebhookSignatureError);
+  });
+
+  it('accepts the UTF-8 bytes of a payload that was signed as a string', async () => {
+    const payload = '{"event":"payment.completed"}';
+    const { signature } = signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
+
+    await expect(
+      verifyWebhook({
+        secrets: TEST_SECRET,
+        payload: Buffer.from(payload, 'utf8'),
+        signature,
+        timestamp,
+        nonce,
+      }),
+    ).resolves.toEqual({ valid: true });
+  });
+
+  it('rejects a binary secret whose bytes differ only outside valid UTF-8', async () => {
+    const { signature } = signWebhook({
+      secrets: Uint8Array.from([0xff]),
+      payload: 'x',
+      timestamp,
+      nonce,
+    });
+
+    await expect(
+      verifyWebhook({
+        secrets: Uint8Array.from([0xfe]),
+        payload: 'x',
+        signature,
+        timestamp,
+        nonce,
+      }),
+    ).rejects.toThrow(WebhookSignatureError);
+  });
+});

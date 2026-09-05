@@ -1,11 +1,12 @@
 import { WebhookError } from '../errors.js';
+import type { WebhookPayload, WebhookSecret } from '../types.js';
 
 export const DEFAULT_SIGNATURE_HEADER = 'x-webhook-signature';
 export const DEFAULT_TIMESTAMP_HEADER = 'x-webhook-timestamp';
 export const DEFAULT_NONCE_HEADER = 'x-webhook-nonce';
 
 export interface AdapterOptions {
-  secrets: string | string[];
+  secrets: WebhookSecret | WebhookSecret[];
   tolerance?: number | undefined;
   nonceValidator?: ((nonce: string) => Promise<boolean>) | undefined;
   signatureHeader?: string | undefined;
@@ -66,11 +67,15 @@ export function extractHeaders(
  * them into an object there is no way back: JSON.stringify changes whitespace and may change key
  * order, so verification would fail for every request and look like a bad secret. That is a
  * configuration problem, and it is reported as one instead of being papered over.
+ *
+ * A Buffer is handed on as it is. Decoding it to a string first would collapse every byte sequence
+ * that is not valid UTF-8 onto the same replacement characters, and two different bodies would
+ * share one signature.
  */
-export function resolveRawBody(request: { rawBody?: unknown; body?: unknown }): string {
+export function resolveRawBody(request: { rawBody?: unknown; body?: unknown }): WebhookPayload {
   const raw = request.rawBody ?? request.body;
   if (Buffer.isBuffer(raw)) {
-    return raw.toString('utf-8');
+    return raw;
   }
   if (typeof raw === 'string') {
     return raw;

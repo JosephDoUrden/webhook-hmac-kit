@@ -1,5 +1,6 @@
 export {
   NONCE_PATTERN,
+  buildCanonicalBytes,
   buildCanonicalString,
   isValidNonce,
   isValidTimestamp,
@@ -21,5 +22,7 @@ export type {
   SignWebhookResult,
   VerifyWebhookOptions,
   VerifyWebhookResult,
+  WebhookPayload,
+  WebhookSecret,
 } from './types.js';
 export { verifyWebhook } from './verifier.js';

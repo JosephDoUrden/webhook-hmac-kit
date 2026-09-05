@@ -300,3 +300,58 @@ describe('Express webhookVerifier middleware', () => {
     expect(onError.mock.calls[0]?.[0]).toBeInstanceOf(Error);
   });
 });
+
+// express.raw() hands over a Buffer. Decoding it to a string before signing would collapse every
+// byte sequence that is not valid UTF-8 onto the same replacement characters, so two different
+// bodies would share one signature.
+describe('Express webhookVerifier with byte bodies', () => {
+  const nonce = 'byte_nonce';
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  function headersFor(body: Buffer) {
+    return {
+      'x-webhook-signature': signWebhook({
+        secrets: TEST_SECRET,
+        payload: body,
+        timestamp: TEST_TIMESTAMP,
+        nonce,
+      }).signature,
+      'x-webhook-timestamp': String(TEST_TIMESTAMP),
+      'x-webhook-nonce': nonce,
+    };
+  }
+
+  it('verifies a body that is not valid UTF-8', async () => {
+    const body = Buffer.from([0x7b, 0xff, 0x7d]);
+    const req = createMockReq({ body, headers: headersFor(body) });
+    const res = createMockRes();
+    const next = vi.fn();
+
+    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
+
+    await vi.waitFor(() => expect(next).toHaveBeenCalled());
+    expect(req.webhookVerified).toBe(true);
+  });
+
+  it('rejects a body that differs from the signed one only outside valid UTF-8', async () => {
+    const req = createMockReq({
+      body: Buffer.from([0x7b, 0xfe, 0x7d]),
+      headers: headersFor(Buffer.from([0x7b, 0xff, 0x7d])),
+    });
+    const res = createMockRes();
+    const next = vi.fn();
+
+    webhookVerifier({ secrets: TEST_SECRET })(req, res, next);
+
+    await vi.waitFor(() => expect(res.statusCode).toBe(401));
+    expect(next).not.toHaveBeenCalled();
+  });
+});

@@ -1,5 +1,5 @@
 import { createHmac, timingSafeEqual } from 'node:crypto';
-import { buildCanonicalString, isValidNonce, isValidTimestamp } from './canonical.js';
+import { buildCanonicalBytes, isValidNonce, isValidTimestamp } from './canonical.js';
 import { WebhookNonceError, WebhookSignatureError, WebhookTimestampError } from './errors.js';
 import { normalizeSecrets } from './secrets.js';
 import { parseSignature } from './signature.js';
@@ -48,7 +48,7 @@ export async function verifyWebhook(options: VerifyWebhookOptions): Promise<Veri
   //    an earlier one matched, so the time taken depends only on how many secrets are configured
   //    and not on which one (if any) produced the signature. Both buffers are 32 bytes by
   //    construction, so timingSafeEqual cannot throw on length.
-  const canonical = buildCanonicalString(options.timestamp, options.nonce, options.payload);
+  const canonical = buildCanonicalBytes(options.timestamp, options.nonce, options.payload);
   let matches = 0;
   for (const secret of secrets) {
     const expected = createHmac('sha256', secret).update(canonical).digest();

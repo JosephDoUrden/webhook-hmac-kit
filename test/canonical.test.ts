@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   NONCE_PATTERN,
+  buildCanonicalBytes,
   buildCanonicalString,
   isValidNonce,
   isValidTimestamp,
@@ -84,5 +85,36 @@ describe('isValidNonce', () => {
     expect(NONCE_PATTERN.source).toBe('^[A-Za-z0-9_-]{1,64}$');
     expect(isValidNonce('ok_1-2')).toBe(true);
     expect(isValidNonce('not.ok')).toBe(false);
+  });
+});
+
+describe('buildCanonicalBytes', () => {
+  for (const vector of vectors) {
+    it(`matches the canonical string for: ${vector.name}`, () => {
+      const result = buildCanonicalBytes(vector.timestamp, vector.nonce, vector.payload);
+      expect(result.equals(Buffer.from(vector.canonical, 'utf8'))).toBe(true);
+    });
+  }
+
+  it('encodes a string payload as UTF-8', () => {
+    expect(buildCanonicalBytes(1000, 'n', 'é🚀')).toEqual(Buffer.from('v2.1000.n.é🚀', 'utf8'));
+  });
+
+  it('copies a byte payload verbatim, invalid UTF-8 included', () => {
+    const payload = Uint8Array.from([0x7b, 0xff, 0x7d]);
+    expect(buildCanonicalBytes(1000, 'n', payload)).toEqual(
+      Buffer.concat([Buffer.from('v2.1000.n.', 'utf8'), payload]),
+    );
+  });
+
+  it('keeps byte payloads distinct where UTF-8 decoding would collapse them', () => {
+    const a = buildCanonicalBytes(1000, 'n', Uint8Array.from([0xff]));
+    const b = buildCanonicalBytes(1000, 'n', Uint8Array.from([0xfe]));
+    expect(a.equals(b)).toBe(false);
+  });
+
+  it('validates the timestamp and nonce like the string builder', () => {
+    expect(() => buildCanonicalBytes(1.5, 'n', 'body')).toThrow(/timestamp/);
+    expect(() => buildCanonicalBytes(1000, 'a.b', 'body')).toThrow(/nonce/);
   });
 });
