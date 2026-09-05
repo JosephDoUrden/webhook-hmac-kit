@@ -113,15 +113,19 @@ export async function hmacSha256(keyBytes: Uint8Array, data: Uint8Array): Promis
  * abuse of the API. Both are reasonable; the deciding factor is that we ship a library and do not
  * choose our users' patch level.
  *
- * The fold below is JS and therefore not itself guaranteed constant time — hand-written JS cannot
- * be (CT-Wasm, POPL 2019; Pornin, IACR ePrint 2025/435), and nodejs/node#38226 measured t up to
- * 37.9 on the *native* primitive when unrelated JS changed. That is precisely why what it compares
- * is blinded rather than secret: the fold is allowed to leak.
+ * The fold is JS and therefore not itself guaranteed constant time — hand-written JS cannot be
+ * (CT-Wasm, POPL 2019; Pornin, IACR ePrint 2025/435), and nodejs/node#38226 measured t up to 37.9
+ * on the *native* primitive when unrelated JS changed. That is precisely why what it compares is
+ * blinded rather than secret: the fold is allowed to leak.
  *
  * The blinding key comes from getRandomValues plus importKey rather than generateKey. generateKey
  * for HMAC needs an IoContext on Workers and throws outside a request, getRandomValues is the only
  * synchronous member of the Crypto interface and is present everywhere, and this way the key length
  * is ours to state.
+ *
+ * The two halves live in blindMany and blindedFoldEqual, so a caller with many operands can blind
+ * them all under one key instead of once per pair. This function is the two-operand case and costs
+ * exactly what it always did: one importKey and two signs.
  *
  * The known-bad list, so none of it comes back:
  *   - a bare JS byte loop as the primary compare. Deno's own is documented as "best-effort", and
@@ -136,6 +140,35 @@ export async function hmacSha256(keyBytes: Uint8Array, data: Uint8Array): Promis
  *   - a vendored hash. standardwebhooks still carries fast-sha256, three years stale.
  */
 export async function blindedEqual(a: Uint8Array, b: Uint8Array): Promise<boolean> {
+  const [left, right] = await blindMany([a, b]);
+  return blindedFoldEqual(left as Uint8Array, right as Uint8Array);
+}
+
+/**
+ * Blinds a whole batch under one key, so a caller comparing many values against many others pays
+ * for each value once rather than once per pair.
+ *
+ * Same construction as blindedEqual and the same reasoning behind it; the only difference is where
+ * the key boundary sits. A verify that weighs s expected MACs against e presented digests costs
+ * s + e signatures here, where blinding each comparison separately costs 2 * s * e. That is not a
+ * micro-optimisation: the entry count on a Standard Webhooks request is chosen by whoever is
+ * calling, so the quadratic term was reachable from outside.
+ *
+ * One key covers the batch, which is what makes the results comparable to each other and nothing
+ * else. Two separate calls draw two keys, so values blinded in different calls never compare equal
+ * even when their inputs were identical — every set of operands that will be folded together has
+ * to be blinded in a single call.
+ *
+ * The key is discarded when the promise settles. It is drawn from getRandomValues plus importKey
+ * rather than generateKey for the reason above: HMAC generateKey needs an IoContext on Workers and
+ * throws outside a request, and getRandomValues is the only synchronous member of the Crypto
+ * interface and is present everywhere.
+ */
+export async function blindMany(digests: Uint8Array[]): Promise<Uint8Array[]> {
+  if (digests.length === 0) {
+    return [];
+  }
+
   const subtle = getSubtle();
   const blindingKey = await subtle.importKey(
     'raw',
@@ -145,20 +178,30 @@ export async function blindedEqual(a: Uint8Array, b: Uint8Array): Promise<boolea
     ['sign'],
   );
 
-  const [blindedA, blindedB] = await Promise.all([
-    subtle.sign(HMAC_SHA256.name, blindingKey, bufferSource(a)),
-    subtle.sign(HMAC_SHA256.name, blindingKey, bufferSource(b)),
-  ]);
+  const blinded = await Promise.all(
+    digests.map((digest) => subtle.sign(HMAC_SHA256.name, blindingKey, bufferSource(digest))),
+  );
+  return blinded.map((value) => new Uint8Array(value));
+}
 
-  const left = new Uint8Array(blindedA);
-  const right = new Uint8Array(blindedB);
-
-  // The length term is not what defends against a length mismatch — the blinding already does
-  // that. Both digests are 32 bytes whatever went in, so operands of different lengths arrive here
-  // as two different 32-byte values and fail on content, with no early return and nothing said
-  // about which was longer. This term is insurance against a future change of digest size making
-  // the two runs unequal, so that a shorter one could never compare equal to a prefix of a longer.
-  // It is a constant under SHA-256 and costs nothing.
+/**
+ * Constant-work equality over two already-blinded values.
+ *
+ * Both operands must have come out of the same blindMany call. Handing this anything unblinded
+ * hands it a secret to leak: the fold is ordinary JavaScript and therefore not itself guaranteed
+ * constant time — hand-written JS cannot be (CT-Wasm, POPL 2019; Pornin, IACR ePrint 2025/435),
+ * and nodejs/node#38226 measured t up to 37.9 on the native primitive when unrelated JS changed.
+ * It is allowed to leak precisely because what it compares is blinded. Not exported from the
+ * package for that reason.
+ *
+ * The length term is not what defends against a length mismatch — the blinding already does that.
+ * Both operands are 32 bytes whatever went in, so inputs of different lengths arrive here as two
+ * different 32-byte values and fail on content, with no early return and nothing said about which
+ * was longer. The term is insurance against a future change of digest size making the two runs
+ * unequal, so that a shorter one could never compare equal to a prefix of a longer. It is a
+ * constant under SHA-256 and costs nothing.
+ */
+export function blindedFoldEqual(left: Uint8Array, right: Uint8Array): boolean {
   let difference = left.length ^ right.length;
   for (let i = 0; i < left.length; i++) {
     difference |= (left[i] as number) ^ (right[i] as number);

@@ -39,7 +39,7 @@
 
 import { bytesEqual, concat, fromBase64, toBase64, utf8 } from './bytes.js';
 import { isValidTimestamp } from './canonical.js';
-import { blindedEqual, hmacSha256 } from './crypto.js';
+import { blindMany, blindedFoldEqual, hmacSha256 } from './crypto.js';
 import { WebhookSignatureError, WebhookTimestampError } from './errors.js';
 import { MAX_SECRETS } from './secrets.js';
 import { DEFAULT_TOLERANCE_SECONDS } from './types.js';
@@ -350,12 +350,24 @@ export async function verifyStandardWebhooks(
 
   // 3. Every secret against every entry, with the results OR-ed at the end. No break out of either
   //    loop: returning early would say which secret and which entry a forgery got closest to.
+  //
+  //    Blinded once for the whole request rather than once per pair. Both sides have to be blinded
+  //    under the same key to stay comparable, so the expected MACs and the presented digests go
+  //    through blindMany in a single call and are split apart afterwards. That makes the cost
+  //    s + e signatures instead of the 2 * s * e that comparing each pair separately would need -
+  //    and since e is chosen by whoever is calling, the quadratic term was reachable from outside.
+  //    The fold that follows is ordinary arithmetic over 32-byte values, so the s * e pairs cost
+  //    nothing worth counting.
   const signed = buildStandardWebhooksBytes(headers.id, timestamp, options.payload);
+  const expected = await Promise.all(secrets.map((secret) => hmacSha256(secret, signed)));
+  const blinded = await blindMany([...expected, ...presented]);
+  const blindedExpected = blinded.slice(0, expected.length);
+  const blindedPresented = blinded.slice(expected.length);
+
   let matches = 0;
-  for (const secret of secrets) {
-    const expected = await hmacSha256(secret, signed);
-    for (const digest of presented) {
-      matches |= (await blindedEqual(expected, digest)) ? 1 : 0;
+  for (const mac of blindedExpected) {
+    for (const digest of blindedPresented) {
+      matches |= blindedFoldEqual(mac, digest) ? 1 : 0;
     }
   }
   if (matches === 0) {

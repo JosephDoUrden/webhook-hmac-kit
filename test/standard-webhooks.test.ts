@@ -25,6 +25,19 @@ import {
   WRONG_KEY_SIGNATURE,
 } from './standard-webhooks-vectors.js';
 
+/** A third live key, so a rotation in the tests can hold one that never matches anything. */
+const THIRD_SECRET = `whsec_${'A'.repeat(32)}`;
+
+/**
+ * What a verify costs, in `subtle.sign` calls: one MAC per secret, then one blinding signature over
+ * each of those MACs and each presented digest, all under a single blinding key drawn once. It is a
+ * function of how many secrets are configured and how many entries survived the parser, and of
+ * nothing else - not of which pair matches, and not of whether any pair matches at all.
+ */
+function expectedSignCalls(secrets: number, entries: number): number {
+  return secrets + (secrets + entries);
+}
+
 function headersFor(vector: StandardWebhooksVector, signature = vector.signature) {
   return {
     'webhook-id': vector.messageId,
@@ -182,7 +195,7 @@ describe('the signature list', () => {
       }),
     ).rejects.toThrow(WebhookSignatureError);
 
-    expect(sign).toHaveBeenCalledTimes(1 * (1 + 2 * MAX_SIGNATURE_ENTRIES));
+    expect(sign).toHaveBeenCalledTimes(expectedSignCalls(1, MAX_SIGNATURE_ENTRIES));
   });
 
   // The trade-off, written down rather than discovered. A valid signature sitting past the cap is
@@ -226,8 +239,52 @@ describe('the signature list', () => {
       payload: VECTOR_A.payload,
     });
 
-    // One expected MAC per secret, then a blinding MAC over each side of every comparison.
-    expect(sign).toHaveBeenCalledTimes(secrets.length * (1 + 2 * entries.length));
+    expect(sign).toHaveBeenCalledTimes(expectedSignCalls(secrets.length, entries.length));
+  });
+
+  // The previous test fixes the count for one arrangement; this one shows the count does not move
+  // when the match does. Every position, and no match at all, cost exactly the same - which is the
+  // whole reason the results are OR-ed at the end rather than returned from inside the loops.
+  it('costs the same wherever the matching pair is, or whether there is one', async () => {
+    const secrets = [VECTOR_A.secret, VECTOR_B.secret, THIRD_SECRET];
+    const arrangements = {
+      'first secret, first entry': [VECTOR_A.signature, WRONG_KEY_SIGNATURE, WRONG_KEY_SIGNATURE],
+      'second secret, last entry': [
+        WRONG_KEY_SIGNATURE,
+        WRONG_KEY_SIGNATURE,
+        VECTOR_B_OVER_VECTOR_A_SIGNATURE,
+      ],
+      'second secret, middle entry': [
+        WRONG_KEY_SIGNATURE,
+        VECTOR_B_OVER_VECTOR_A_SIGNATURE,
+        WRONG_KEY_SIGNATURE,
+      ],
+      'no match at all': [WRONG_KEY_SIGNATURE, WRONG_KEY_SIGNATURE, WRONG_KEY_SIGNATURE],
+    };
+
+    const counts: Record<string, { sign: number; importKey: number }> = {};
+    for (const [name, entries] of Object.entries(arrangements)) {
+      const sign = vi.spyOn(getSubtle(), 'sign');
+      const importKey = vi.spyOn(getSubtle(), 'importKey');
+
+      await verifyStandardWebhooks({
+        secrets,
+        headers: headersFor(VECTOR_A, entries.join(' ')),
+        payload: VECTOR_A.payload,
+      }).catch(() => undefined);
+
+      counts[name] = { sign: sign.mock.calls.length, importKey: importKey.mock.calls.length };
+      vi.restoreAllMocks();
+    }
+
+    // One MAC per secret plus one blinding call, so the key imports do not move either.
+    const expected = {
+      sign: expectedSignCalls(secrets.length, 3),
+      importKey: secrets.length + 1,
+    };
+    for (const name of Object.keys(arrangements)) {
+      expect(counts[name]).toEqual(expected);
+    }
   });
 
   // Their rotation model: the sender emits one signature per live key and the receiver tries each.
