@@ -7,6 +7,8 @@
 Sign and verify webhook requests with HMAC-SHA256: timestamp validation, nonce-based
 replay protection, secret rotation, and adapters for Express, Fastify and NestJS.
 
+![demo](docs/demo.gif)
+
 Runs on Web Crypto only, so it works the same way on Node, Cloudflare Workers, Deno and
 Bun with no bundler configuration and no runtime branch.
 
