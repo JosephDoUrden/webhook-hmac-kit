@@ -13,8 +13,8 @@ const firstVector = {
   nonce: 'nonce_abc123',
 };
 
-function signPayload(payload: string, timestamp: number, nonce: string) {
-  return signWebhook({ secret: TEST_SECRET, payload, timestamp, nonce }).signature;
+async function signPayload(payload: string, timestamp: number, nonce: string) {
+  return (await signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce })).signature;
 }
 
 function createMockContext(overrides: Record<string, unknown> = {}) {
@@ -48,7 +48,7 @@ describe('NestJS WebhookGuard', () => {
   });
 
   it('returns true for valid webhook', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
         'x-webhook-signature': signature,
@@ -57,7 +57,7 @@ describe('NestJS WebhookGuard', () => {
       },
     });
 
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
     const result = await guard.canActivate(context);
 
     expect(result).toBe(true);
@@ -65,7 +65,7 @@ describe('NestJS WebhookGuard', () => {
   });
 
   it('handles Buffer body', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       body: Buffer.from(firstVector.payload),
       headers: {
@@ -75,7 +75,7 @@ describe('NestJS WebhookGuard', () => {
       },
     });
 
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
     const result = await guard.canActivate(context);
 
     expect(result).toBe(true);
@@ -83,7 +83,7 @@ describe('NestJS WebhookGuard', () => {
 
   it('throws HttpException(400) for missing headers', async () => {
     const context = createMockContext({ headers: {} });
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
 
     await expect(guard.canActivate(context)).rejects.toThrow(HttpException);
 
@@ -106,7 +106,7 @@ describe('NestJS WebhookGuard', () => {
         'x-webhook-nonce': firstVector.nonce,
       },
     });
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
 
     try {
       await guard.canActivate(context);
@@ -117,9 +117,9 @@ describe('NestJS WebhookGuard', () => {
     }
   });
 
-  it('throws HttpException(400) for expired timestamp', async () => {
+  it('throws HttpException(401) for expired timestamp', async () => {
     vi.setSystemTime((TEST_TIMESTAMP + 600) * 1000);
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
         'x-webhook-signature': signature,
@@ -127,19 +127,20 @@ describe('NestJS WebhookGuard', () => {
         'x-webhook-nonce': firstVector.nonce,
       },
     });
-    const guard = new WebhookGuard({ secret: TEST_SECRET });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
 
     try {
       await guard.canActivate(context);
       expect.fail('Should have thrown');
     } catch (e) {
       const err = e as HttpException;
-      expect(err.getStatus()).toBe(400);
+      expect(err.getStatus()).toBe(401);
+      expect(err.getResponse()).toEqual({ error: 'Webhook verification failed' });
     }
   });
 
-  it('throws HttpException(409) for replayed nonce', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+  it('throws HttpException(401) for replayed nonce', async () => {
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
         'x-webhook-signature': signature,
@@ -148,7 +149,7 @@ describe('NestJS WebhookGuard', () => {
       },
     });
     const guard = new WebhookGuard({
-      secret: TEST_SECRET,
+      secrets: TEST_SECRET,
       nonceValidator: async () => false,
     });
 
@@ -157,12 +158,56 @@ describe('NestJS WebhookGuard', () => {
       expect.fail('Should have thrown');
     } catch (e) {
       const err = e as HttpException;
-      expect(err.getStatus()).toBe(409);
+      expect(err.getStatus()).toBe(401);
+      expect(err.getResponse()).toEqual({ error: 'Webhook verification failed' });
     }
   });
 
+  it('uses rawBody when the framework provides it alongside a parsed body', async () => {
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const context = createMockContext({
+      body: JSON.parse(firstVector.payload),
+      rawBody: Buffer.from(firstVector.payload),
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
+    await expect(guard.canActivate(context)).resolves.toBe(true);
+  });
+
+  it('reports a parsed body as a configuration error, through onError', async () => {
+    const onError = vi.fn();
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const context = createMockContext({
+      body: JSON.parse(firstVector.payload),
+      headers: {
+        'x-webhook-signature': signature,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+
+    const guard = new WebhookGuard({ secrets: TEST_SECRET, onError });
+
+    try {
+      await guard.canActivate(context);
+      expect.fail('Should have thrown');
+    } catch (e) {
+      const err = e as HttpException;
+      expect(err).toBeInstanceOf(HttpException);
+      expect(err.getStatus()).toBe(500);
+      expect(err.getResponse()).toEqual({ error: 'Internal server error' });
+    }
+    expect(String(onError.mock.calls[0]?.[0])).toMatch(/raw body/i);
+    expect(context.request.webhookVerified).toBeUndefined();
+  });
+
   it('supports custom header names', async () => {
-    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const context = createMockContext({
       headers: {
         'x-custom-sig': signature,
@@ -171,7 +216,7 @@ describe('NestJS WebhookGuard', () => {
       },
     });
     const guard = new WebhookGuard({
-      secret: TEST_SECRET,
+      secrets: TEST_SECRET,
       signatureHeader: 'x-custom-sig',
       timestampHeader: 'x-custom-ts',
       nonceHeader: 'x-custom-nonce',
@@ -190,7 +235,7 @@ describe('NestJS WebhookGuard', () => {
         'x-webhook-nonce': firstVector.nonce,
       },
     });
-    const guard = new WebhookGuard({ secret: TEST_SECRET, onError });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET, onError });
 
     try {
       await guard.canActivate(context);
@@ -204,7 +249,7 @@ describe('NestJS WebhookGuard', () => {
 
 describe('WebhookModule', () => {
   it('forRoot returns module config with providers and exports', () => {
-    const options = { secret: 'test-secret' };
+    const options = { secrets: 'test-secret' };
     const result = WebhookModule.forRoot(options);
 
     expect(result.module).toBe(WebhookModule);
@@ -216,5 +261,72 @@ describe('WebhookModule', () => {
     expect(result.providers[1]).toBe(WebhookGuard);
     expect(result.exports).toContain(WEBHOOK_OPTIONS);
     expect(result.exports).toContain(WebhookGuard);
+  });
+});
+
+describe('NestJS WebhookGuard header handling', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects a header the framework kept as two values', async () => {
+    const signature = await signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const context = createMockContext({
+      headers: {
+        'x-webhook-signature': [signature, `v2=${'b'.repeat(64)}`],
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET });
+
+    try {
+      await guard.canActivate(context);
+      expect.fail('Should have thrown');
+    } catch (e) {
+      const err = e as HttpException;
+      expect(err.getStatus()).toBe(400);
+      expect(err.getResponse()).toEqual({ error: 'Duplicate header: x-webhook-signature' });
+    }
+  });
+});
+
+describe('NestJS WebhookGuard failure isolation', () => {
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('still throws the 401 when onError itself throws', async () => {
+    const onError = vi.fn(() => {
+      throw new Error('the logger blew up');
+    });
+    const context = createMockContext({
+      headers: {
+        'x-webhook-signature': `v2=${'a'.repeat(64)}`,
+        'x-webhook-timestamp': String(TEST_TIMESTAMP),
+        'x-webhook-nonce': firstVector.nonce,
+      },
+    });
+    const guard = new WebhookGuard({ secrets: TEST_SECRET, onError });
+
+    try {
+      await guard.canActivate(context);
+      expect.fail('Should have thrown');
+    } catch (e) {
+      const err = e as HttpException;
+      expect(err).toBeInstanceOf(HttpException);
+      expect(err.getStatus()).toBe(401);
+      expect(err.getResponse()).toEqual({ error: 'Webhook verification failed' });
+    }
   });
 });

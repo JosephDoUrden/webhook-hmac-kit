@@ -1,6 +1,13 @@
 import { verifyWebhook } from '../verifier.js';
 import type { AdapterOptions } from './shared.js';
-import { extractHeaders, getHeaderNames, mapErrorToStatus } from './shared.js';
+import {
+  extractHeaders,
+  getHeaderNames,
+  mapErrorToBody,
+  mapErrorToStatus,
+  reportError,
+  resolveRawBody,
+} from './shared.js';
 
 export type { AdapterOptions } from './shared.js';
 
@@ -16,7 +23,9 @@ interface HttpContext {
 
 interface WebhookRequest {
   headers: Record<string, string | string[] | undefined>;
-  body: Buffer | string | unknown;
+  body: unknown;
+  /** Populated by NestJS when the app is created with `rawBody: true`. */
+  rawBody?: Uint8Array | string | undefined;
   webhookVerified?: boolean;
 }
 
@@ -50,25 +59,21 @@ export class WebhookGuard {
     const request = context.switchToHttp().getRequest();
     const headerNames = getHeaderNames(this.options);
 
-    const headerResult = extractHeaders(headerNames, (name) => {
-      const val = request.headers[name];
-      return Array.isArray(val) ? val[0] : val;
-    });
+    const headerResult = extractHeaders(headerNames, (name) => request.headers[name]);
 
-    if ('missing' in headerResult) {
-      throw new HttpException({ error: `Missing required header: ${headerResult.missing}` }, 400);
+    if ('invalid' in headerResult) {
+      throw new HttpException({ error: headerResult.invalid }, 400);
     }
 
-    const raw = request.body;
-    const payload = Buffer.isBuffer(raw)
-      ? raw.toString('utf-8')
-      : typeof raw === 'string'
-        ? raw
-        : JSON.stringify(raw);
-
     try {
+      // Create the app with `NestFactory.create(AppModule, { rawBody: true })` so `request.rawBody`
+      // carries the exact bytes. A parsed body with no rawBody is a configuration error. It is
+      // inside the try so the integrator hears about it through onError and it arrives as an
+      // HttpException carrying its own 500, the same shape as every other failure here.
+      const payload = resolveRawBody(request);
+
       await verifyWebhook({
-        secret: this.options.secret,
+        secrets: this.options.secrets,
         payload,
         signature: headerResult.signature,
         timestamp: headerResult.timestamp,
@@ -79,12 +84,8 @@ export class WebhookGuard {
       request.webhookVerified = true;
       return true;
     } catch (error: unknown) {
-      if (this.options.onError) {
-        this.options.onError(error);
-      }
-      const status = mapErrorToStatus(error);
-      const message = error instanceof Error ? error.message : 'Internal server error';
-      throw new HttpException({ error: message }, status);
+      reportError(this.options, error);
+      throw new HttpException(mapErrorToBody(error), mapErrorToStatus(error));
     }
   }
 }

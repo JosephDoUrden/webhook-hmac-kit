@@ -1,4 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { utf8 } from '../src/bytes.js';
 import { WebhookNonceError, WebhookSignatureError, WebhookTimestampError } from '../src/errors.js';
 import { signWebhook } from '../src/signer.js';
 import { verifyWebhook } from '../src/verifier.js';
@@ -20,7 +21,7 @@ describe('verifyWebhook', () => {
   describe('happy path', () => {
     it('accepts a valid signature', async () => {
       const result = await verifyWebhook({
-        secret: TEST_SECRET,
+        secrets: TEST_SECRET,
         payload: firstVector.payload,
         signature: firstVector.signature,
         timestamp: firstVector.timestamp,
@@ -32,7 +33,7 @@ describe('verifyWebhook', () => {
     for (const vector of vectors) {
       it(`verifies vector: ${vector.name}`, async () => {
         const result = await verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: vector.payload,
           signature: vector.signature,
           timestamp: vector.timestamp,
@@ -49,7 +50,7 @@ describe('verifyWebhook', () => {
 
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -63,7 +64,7 @@ describe('verifyWebhook', () => {
 
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -76,7 +77,7 @@ describe('verifyWebhook', () => {
       vi.setSystemTime((TEST_TIMESTAMP + 300) * 1000);
 
       const result = await verifyWebhook({
-        secret: TEST_SECRET,
+        secrets: TEST_SECRET,
         payload: firstVector.payload,
         signature: firstVector.signature,
         timestamp: firstVector.timestamp,
@@ -90,7 +91,7 @@ describe('verifyWebhook', () => {
 
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -104,7 +105,7 @@ describe('verifyWebhook', () => {
 
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -118,7 +119,7 @@ describe('verifyWebhook', () => {
       vi.setSystemTime((TEST_TIMESTAMP + 10) * 1000);
 
       const result = await verifyWebhook({
-        secret: TEST_SECRET,
+        secrets: TEST_SECRET,
         payload: firstVector.payload,
         signature: firstVector.signature,
         timestamp: firstVector.timestamp,
@@ -133,7 +134,7 @@ describe('verifyWebhook', () => {
     it('rejects wrong signature', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: 'a'.repeat(64),
           timestamp: firstVector.timestamp,
@@ -145,7 +146,7 @@ describe('verifyWebhook', () => {
     it('rejects tampered payload', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: `${firstVector.payload} tampered`,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -157,7 +158,7 @@ describe('verifyWebhook', () => {
     it('rejects wrong secret', async () => {
       await expect(
         verifyWebhook({
-          secret: 'wrong_secret',
+          secrets: 'wrong_secret',
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -169,7 +170,7 @@ describe('verifyWebhook', () => {
     it('rejects malformed signature (wrong length)', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: 'tooshort',
           timestamp: firstVector.timestamp,
@@ -181,9 +182,103 @@ describe('verifyWebhook', () => {
     it('rejects malformed signature (non-hex characters)', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: 'zz'.repeat(32),
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
+    it('rejects a bare hex digest with no scheme version', async () => {
+      const hex = firstVector.signature.slice('v2='.length);
+      await expect(
+        verifyWebhook({
+          secrets: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: hex,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
+    it('rejects a signature with an unsupported scheme version', async () => {
+      const hex = firstVector.signature.slice('v2='.length);
+      for (const version of ['v1', 'v3', 'v22', 'V2']) {
+        await expect(
+          verifyWebhook({
+            secrets: TEST_SECRET,
+            payload: firstVector.payload,
+            signature: `${version}=${hex}`,
+            timestamp: firstVector.timestamp,
+            nonce: firstVector.nonce,
+          }),
+        ).rejects.toThrow(WebhookSignatureError);
+      }
+    });
+
+    it('rejects a valid signature with trailing garbage', async () => {
+      for (const suffix of ['zz', ' ', '!!!!', 'ZZZZZZZZ', '0']) {
+        await expect(
+          verifyWebhook({
+            secrets: TEST_SECRET,
+            payload: firstVector.payload,
+            signature: firstVector.signature + suffix,
+            timestamp: firstVector.timestamp,
+            nonce: firstVector.nonce,
+          }),
+        ).rejects.toThrow(WebhookSignatureError);
+      }
+    });
+
+    it('rejects upper-case hex: one digest has one spelling on the wire', async () => {
+      await expect(
+        verifyWebhook({
+          secrets: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature.toUpperCase().replace('V2', 'v2'),
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
+    it('rejects a digest with a single upper-case character in it', async () => {
+      const mixed = firstVector.signature.replace(/[a-f]/, (c) => c.toUpperCase());
+      expect(mixed).not.toBe(firstVector.signature);
+
+      await expect(
+        verifyWebhook({
+          secrets: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: mixed,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
+    it('rejects a folded duplicate header value ("sigA, sigB")', async () => {
+      const folded = `${firstVector.signature}, v2=${'f'.repeat(64)}`;
+      await expect(
+        verifyWebhook({
+          secrets: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: folded,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
+    it('rejects surrounding whitespace', async () => {
+      await expect(
+        verifyWebhook({
+          secrets: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: ` ${firstVector.signature}`,
           timestamp: firstVector.timestamp,
           nonce: firstVector.nonce,
         }),
@@ -193,7 +288,7 @@ describe('verifyWebhook', () => {
     it('rejects empty signature', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: '',
           timestamp: firstVector.timestamp,
@@ -207,7 +302,7 @@ describe('verifyWebhook', () => {
     it('rejects replayed nonce', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -219,7 +314,7 @@ describe('verifyWebhook', () => {
 
     it('accepts valid nonce', async () => {
       const result = await verifyWebhook({
-        secret: TEST_SECRET,
+        secrets: TEST_SECRET,
         payload: firstVector.payload,
         signature: firstVector.signature,
         timestamp: firstVector.timestamp,
@@ -231,7 +326,7 @@ describe('verifyWebhook', () => {
 
     it('passes without nonce validator', async () => {
       const result = await verifyWebhook({
-        secret: TEST_SECRET,
+        secrets: TEST_SECRET,
         payload: firstVector.payload,
         signature: firstVector.signature,
         timestamp: firstVector.timestamp,
@@ -244,7 +339,7 @@ describe('verifyWebhook', () => {
       const validator = vi.fn().mockResolvedValue(true);
 
       await verifyWebhook({
-        secret: TEST_SECRET,
+        secrets: TEST_SECRET,
         payload: firstVector.payload,
         signature: firstVector.signature,
         timestamp: firstVector.timestamp,
@@ -255,21 +350,22 @@ describe('verifyWebhook', () => {
       expect(validator).toHaveBeenCalledWith(firstVector.nonce);
     });
 
-    it('propagates nonceValidator errors', async () => {
+    it('wraps a nonceValidator failure, keeping the cause', async () => {
       const redisError = new Error('Redis connection failed');
 
-      await expect(
-        verifyWebhook({
-          secret: TEST_SECRET,
-          payload: firstVector.payload,
-          signature: firstVector.signature,
-          timestamp: firstVector.timestamp,
-          nonce: firstVector.nonce,
-          nonceValidator: async () => {
-            throw redisError;
-          },
-        }),
-      ).rejects.toThrow('Redis connection failed');
+      const failure = verifyWebhook({
+        secrets: TEST_SECRET,
+        payload: firstVector.payload,
+        signature: firstVector.signature,
+        timestamp: firstVector.timestamp,
+        nonce: firstVector.nonce,
+        nonceValidator: async () => {
+          throw redisError;
+        },
+      });
+
+      await expect(failure).rejects.toThrow(WebhookNonceError);
+      await expect(failure).rejects.toHaveProperty('cause', redisError);
     });
   });
 
@@ -277,19 +373,19 @@ describe('verifyWebhook', () => {
     it('rejects empty secret', async () => {
       await expect(
         verifyWebhook({
-          secret: '',
+          secrets: '',
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
           nonce: firstVector.nonce,
         }),
-      ).rejects.toThrow('secret must not be empty');
+      ).rejects.toThrow('each secret must be a non-empty string or byte array');
     });
 
     it('rejects NaN timestamp', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: Number.NaN,
@@ -298,10 +394,50 @@ describe('verifyWebhook', () => {
       ).rejects.toThrow(WebhookTimestampError);
     });
 
+    it('rejects a fractional timestamp even when it is inside the window', async () => {
+      const timestamp = TEST_TIMESTAMP + 0.5;
+      const { signature } = await signWebhook({
+        secrets: TEST_SECRET,
+        payload: 'x',
+        timestamp: TEST_TIMESTAMP,
+        nonce: 'n',
+      });
+
+      await expect(
+        verifyWebhook({ secrets: TEST_SECRET, payload: 'x', signature, timestamp, nonce: 'n' }),
+      ).rejects.toThrow(WebhookTimestampError);
+    });
+
+    it('rejects a negative timestamp', async () => {
+      await expect(
+        verifyWebhook({
+          secrets: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: -1,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookTimestampError);
+    });
+
+    it('rejects a malformed nonce before touching the signature', async () => {
+      for (const nonce of ['', 'a.b', 'a:b', 'x'.repeat(65)]) {
+        await expect(
+          verifyWebhook({
+            secrets: TEST_SECRET,
+            payload: firstVector.payload,
+            signature: 'not-a-signature',
+            timestamp: firstVector.timestamp,
+            nonce,
+          }),
+        ).rejects.toThrow(WebhookNonceError);
+      }
+    });
+
     it('rejects Infinity timestamp', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: Number.POSITIVE_INFINITY,
@@ -313,7 +449,7 @@ describe('verifyWebhook', () => {
     it('rejects NaN tolerance', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -326,7 +462,7 @@ describe('verifyWebhook', () => {
     it('rejects Infinity tolerance', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -339,7 +475,7 @@ describe('verifyWebhook', () => {
     it('rejects negative tolerance', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: firstVector.payload,
           signature: firstVector.signature,
           timestamp: firstVector.timestamp,
@@ -351,7 +487,7 @@ describe('verifyWebhook', () => {
 
     it('accepts tolerance of 0 (exact second match only)', async () => {
       const result = await verifyWebhook({
-        secret: TEST_SECRET,
+        secrets: TEST_SECRET,
         payload: firstVector.payload,
         signature: firstVector.signature,
         timestamp: firstVector.timestamp,
@@ -368,7 +504,7 @@ describe('verifyWebhook', () => {
 
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: 'test',
           signature: 'invalid',
           timestamp: TEST_TIMESTAMP,
@@ -380,7 +516,7 @@ describe('verifyWebhook', () => {
     it('checks signature before nonce', async () => {
       await expect(
         verifyWebhook({
-          secret: TEST_SECRET,
+          secrets: TEST_SECRET,
           payload: 'test',
           signature: 'a'.repeat(64),
           timestamp: TEST_TIMESTAMP,
@@ -397,15 +533,15 @@ describe('verifyWebhook', () => {
       const timestamp = TEST_TIMESTAMP;
       const nonce = 'round-trip-nonce';
 
-      const { signature } = signWebhook({
-        secret: TEST_SECRET,
+      const { signature } = await signWebhook({
+        secrets: TEST_SECRET,
         payload,
         timestamp,
         nonce,
       });
 
       const result = await verifyWebhook({
-        secret: TEST_SECRET,
+        secrets: TEST_SECRET,
         payload,
         signature,
         timestamp,
@@ -414,5 +550,72 @@ describe('verifyWebhook', () => {
 
       expect(result).toEqual({ valid: true });
     });
+  });
+});
+
+describe('byte-exact payloads and secrets', () => {
+  const timestamp = TEST_TIMESTAMP;
+  const nonce = 'byte_nonce';
+
+  beforeEach(() => {
+    vi.useFakeTimers();
+    vi.setSystemTime(TEST_TIMESTAMP * 1000);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
+  });
+
+  it('rejects a body whose bytes differ only outside valid UTF-8', async () => {
+    const { signature } = await signWebhook({
+      secrets: TEST_SECRET,
+      payload: Uint8Array.from([0x7b, 0xff, 0x7d]),
+      timestamp,
+      nonce,
+    });
+
+    await expect(
+      verifyWebhook({
+        secrets: TEST_SECRET,
+        payload: Uint8Array.from([0x7b, 0xfe, 0x7d]),
+        signature,
+        timestamp,
+        nonce,
+      }),
+    ).rejects.toThrow(WebhookSignatureError);
+  });
+
+  it('accepts the UTF-8 bytes of a payload that was signed as a string', async () => {
+    const payload = '{"event":"payment.completed"}';
+    const { signature } = await signWebhook({ secrets: TEST_SECRET, payload, timestamp, nonce });
+
+    await expect(
+      verifyWebhook({
+        secrets: TEST_SECRET,
+        payload: utf8(payload),
+        signature,
+        timestamp,
+        nonce,
+      }),
+    ).resolves.toEqual({ valid: true });
+  });
+
+  it('rejects a binary secret whose bytes differ only outside valid UTF-8', async () => {
+    const { signature } = await signWebhook({
+      secrets: Uint8Array.from([0xff]),
+      payload: 'x',
+      timestamp,
+      nonce,
+    });
+
+    await expect(
+      verifyWebhook({
+        secrets: Uint8Array.from([0xfe]),
+        payload: 'x',
+        signature,
+        timestamp,
+        nonce,
+      }),
+    ).rejects.toThrow(WebhookSignatureError);
   });
 });

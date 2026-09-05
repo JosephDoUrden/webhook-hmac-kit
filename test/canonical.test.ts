@@ -1,37 +1,163 @@
 import { describe, expect, it } from 'vitest';
-import { buildCanonicalString } from '../src/canonical.js';
+import { bytesEqual, concat, utf8 } from '../src/bytes.js';
+import {
+  NONCE_PATTERN,
+  buildCanonicalBytes,
+  buildCanonicalString,
+  isValidNonce,
+  isValidTimestamp,
+} from '../src/canonical.js';
 import { vectors } from './vectors.js';
 
 describe('buildCanonicalString', () => {
+  // A byte payload has no string form, so the vector that carries one has no `canonical` either.
   for (const vector of vectors) {
+    if (typeof vector.payload !== 'string') continue;
+
     it(`produces correct canonical string for: ${vector.name}`, () => {
-      const result = buildCanonicalString('v1', vector.timestamp, vector.nonce, vector.payload);
+      const result = buildCanonicalString(vector.timestamp, vector.nonce, vector.payload as string);
       expect(result).toBe(vector.canonical);
     });
   }
 
+  it('uses the v2 layout: version.timestamp.nonce.payload', () => {
+    expect(buildCanonicalString(1000, 'n', 'body')).toBe('v2.1000.n.body');
+  });
+
   it('preserves whitespace in payload', () => {
-    const result = buildCanonicalString('v1', 1000, 'n', '  spaces  ');
-    expect(result).toBe('v1:1000:n:  spaces  ');
+    expect(buildCanonicalString(1000, 'n', '  spaces  ')).toBe('v2.1000.n.  spaces  ');
   });
 
   it('handles empty payload', () => {
-    const result = buildCanonicalString('v1', 1000, 'n', '');
-    expect(result).toBe('v1:1000:n:');
+    expect(buildCanonicalString(1000, 'n', '')).toBe('v2.1000.n.');
   });
 
   it('handles unicode in payload', () => {
-    const result = buildCanonicalString('v1', 1000, 'n', '\u00e9\ud83d\ude80');
-    expect(result).toBe('v1:1000:n:\u00e9\ud83d\ude80');
+    expect(buildCanonicalString(1000, 'n', 'é🚀')).toBe('v2.1000.n.é🚀');
   });
 
-  it('handles colons in payload without ambiguity', () => {
-    const result = buildCanonicalString('v1', 1000, 'n', 'a:b:c');
-    expect(result).toBe('v1:1000:n:a:b:c');
+  it('keeps dots and colons in the payload verbatim', () => {
+    expect(buildCanonicalString(1000, 'n', 'a.b:c')).toBe('v2.1000.n.a.b:c');
   });
 
-  it('uses custom version prefix', () => {
-    const result = buildCanonicalString('v2', 1000, 'n', 'body');
-    expect(result).toBe('v2:1000:n:body');
+  it('renders large timestamps in plain decimal, never exponent form', () => {
+    const result = buildCanonicalString(Number.MAX_SAFE_INTEGER, 'n', '');
+    expect(result).toBe('v2.9007199254740991.n.');
+  });
+
+  describe('timestamp validation', () => {
+    it.each([0.5, 1700000000.5, -1, Number.NaN, Number.POSITIVE_INFINITY, 1e21])(
+      'rejects timestamp %s',
+      (timestamp) => {
+        expect(() => buildCanonicalString(timestamp, 'n', 'body')).toThrow(/timestamp/);
+      },
+    );
+
+    it('accepts zero and safe integers', () => {
+      expect(() => buildCanonicalString(0, 'n', 'body')).not.toThrow();
+      expect(() => buildCanonicalString(Number.MAX_SAFE_INTEGER, 'n', 'body')).not.toThrow();
+    });
+  });
+
+  describe('nonce validation', () => {
+    it.each(['', 'a.b', 'a:b', 'a b', 'a/b', 'a+b', 'é', 'x'.repeat(65)])(
+      'rejects nonce %j',
+      (nonce) => {
+        expect(() => buildCanonicalString(1000, nonce, 'body')).toThrow(/nonce/);
+      },
+    );
+
+    it.each(['a', 'nonce_abc-123', 'x'.repeat(64), 'A-Z_a-z0-9'])('accepts nonce %j', (nonce) => {
+      expect(() => buildCanonicalString(1000, nonce, 'body')).not.toThrow();
+    });
+  });
+});
+
+describe('isValidTimestamp', () => {
+  it('accepts non-negative safe integers only', () => {
+    expect(isValidTimestamp(0)).toBe(true);
+    expect(isValidTimestamp(1700000000)).toBe(true);
+    expect(isValidTimestamp(-1)).toBe(false);
+    expect(isValidTimestamp(1.5)).toBe(false);
+    expect(isValidTimestamp(Number.NaN)).toBe(false);
+    expect(isValidTimestamp(2 ** 53)).toBe(false);
+  });
+});
+
+describe('isValidNonce', () => {
+  it('matches the exported NONCE_PATTERN', () => {
+    expect(NONCE_PATTERN.source).toBe('^[A-Za-z0-9_-]{1,64}$');
+    expect(isValidNonce('ok_1-2')).toBe(true);
+    expect(isValidNonce('not.ok')).toBe(false);
+  });
+});
+
+describe('buildCanonicalBytes', () => {
+  for (const vector of vectors) {
+    it(`matches the canonical value for: ${vector.name}`, () => {
+      const prefix = utf8(`v2.${vector.timestamp}.${vector.nonce}.`);
+      const expected =
+        vector.canonical === undefined
+          ? concat(prefix, vector.payload as Uint8Array)
+          : utf8(vector.canonical);
+
+      const result = buildCanonicalBytes(vector.timestamp, vector.nonce, vector.payload);
+      expect(bytesEqual(result, expected)).toBe(true);
+    });
+  }
+
+  // The bytes leaving this function are a plain Uint8Array, not a Buffer. A consumer on Deno,
+  // Bun or Workers has no Buffer to receive, and a Buffer here would have made the public type
+  // a lie the moment the library left Node.
+  it('returns a plain Uint8Array', () => {
+    expect(buildCanonicalBytes(1000, 'n', 'body').constructor).toBe(Uint8Array);
+  });
+
+  it('encodes a string payload as UTF-8', () => {
+    expect(buildCanonicalBytes(1000, 'n', 'é🚀')).toEqual(utf8('v2.1000.n.é🚀'));
+  });
+
+  it('copies a byte payload verbatim, invalid UTF-8 included', () => {
+    const payload = Uint8Array.from([0x7b, 0xff, 0x7d]);
+    expect(buildCanonicalBytes(1000, 'n', payload)).toEqual(concat(utf8('v2.1000.n.'), payload));
+  });
+
+  it('keeps byte payloads distinct where UTF-8 decoding would collapse them', () => {
+    const a = buildCanonicalBytes(1000, 'n', Uint8Array.from([0xff]));
+    const b = buildCanonicalBytes(1000, 'n', Uint8Array.from([0xfe]));
+    expect(bytesEqual(a, b)).toBe(false);
+  });
+
+  it('validates the timestamp and nonce like the string builder', () => {
+    expect(() => buildCanonicalBytes(1.5, 'n', 'body')).toThrow(/timestamp/);
+    expect(() => buildCanonicalBytes(1000, 'a.b', 'body')).toThrow(/nonce/);
+  });
+});
+
+// TypeScript stops these at compile time; a JS caller gets no such help, and a stringified payload
+// collides with the string that happens to look the same ('null', '[object Object]', 'a').
+describe('payload type guard', () => {
+  const rejected: Array<[string, unknown]> = [
+    ['an array', ['a']],
+    ['null', null],
+    ['a plain object', {}],
+    ['undefined', undefined],
+  ];
+
+  for (const [name, payload] of rejected) {
+    it(`buildCanonicalString rejects ${name}`, () => {
+      expect(() => buildCanonicalString(1000, 'n', payload as string)).toThrow(TypeError);
+      expect(() => buildCanonicalString(1000, 'n', payload as string)).toThrow(/payload/);
+    });
+
+    it(`buildCanonicalBytes rejects ${name}`, () => {
+      expect(() => buildCanonicalBytes(1000, 'n', payload as string)).toThrow(TypeError);
+      expect(() => buildCanonicalBytes(1000, 'n', payload as string)).toThrow(/payload/);
+    });
+  }
+
+  it('buildCanonicalString rejects bytes, which it cannot render as text', () => {
+    const payload = Uint8Array.from([0x61]) as unknown as string;
+    expect(() => buildCanonicalString(1000, 'n', payload)).toThrow(/payload/);
   });
 });
