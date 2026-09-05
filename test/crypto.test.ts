@@ -8,10 +8,17 @@ import { blindedEqual, getSubtle, hmacSha256, importHmacKey } from '../src/crypt
 import { TEST_SECRET, vectors } from './vectors.js';
 
 /**
- * Matches a module specifier, not the mention of one: getSubtle's remedy string quotes
- * require('node:crypto') on purpose and must not trip this.
+ * Matches a module specifier, not the mention of one: getSubtle's remedy message shows the ESM
+ * form of the node:crypto import as example text for the reader to copy, and that text is not a
+ * specifier this file itself resolves.
  */
 const NODE_SPECIFIER = /(?:\bfrom|\bimport)\s*\(?\s*['"]node:/;
+
+/**
+ * The one line the scan below has to ignore. Stripping just this line, rather than loosening
+ * NODE_SPECIFIER, keeps the check able to catch a real import added anywhere else in src.
+ */
+const REMEDY_EXAMPLE_LINE = /importing this library first: import/;
 
 function sourceFiles(dir: string): string[] {
   return readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {
@@ -30,7 +37,13 @@ describe('src imports nothing from Node', () => {
     // fileURLToPath rather than .pathname, which would leave percent-encoding in the path.
     const src = fileURLToPath(new URL('../src/', import.meta.url));
     const offenders = sourceFiles(src)
-      .filter((file) => NODE_SPECIFIER.test(readFileSync(file, 'utf8')))
+      .filter((file) => {
+        const content = readFileSync(file, 'utf8')
+          .split('\n')
+          .filter((line) => !REMEDY_EXAMPLE_LINE.test(line))
+          .join('\n');
+        return NODE_SPECIFIER.test(content);
+      })
       .map((file) => file.slice(src.length));
 
     expect(offenders).toEqual([]);
@@ -73,6 +86,11 @@ describe('getSubtle', () => {
     Object.defineProperty(globalThis, 'crypto', { value: undefined, configurable: true });
     try {
       expect(() => getSubtle()).toThrow(/Web Crypto/);
+      // ESM is the form a caller in this "type": "module" package actually needs; the CommonJS
+      // form is still named, in one clause, for a caller importing this library from CJS.
+      expect(() => getSubtle()).toThrow(
+        /import \{ webcrypto \} from 'node:crypto'; globalThis\.crypto \?\?= webcrypto/,
+      );
       expect(() => getSubtle()).toThrow(
         /globalThis\.crypto \?\?= require\('node:crypto'\)\.webcrypto/,
       );

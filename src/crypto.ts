@@ -43,7 +43,9 @@ export class WebCryptoUnavailableError extends Error {
         'has no fallback. ' +
         'On Node 22+ it is present by default unless the process was started with ' +
         '--no-experimental-global-webcrypto; remove that flag, or install the global before ' +
-        "importing this library with: globalThis.crypto ??= require('node:crypto').webcrypto",
+        "importing this library first: import { webcrypto } from 'node:crypto'; " +
+        'globalThis.crypto ??= webcrypto ' +
+        "(in CommonJS: globalThis.crypto ??= require('node:crypto').webcrypto)",
     );
     this.name = 'WebCryptoUnavailableError';
   }
