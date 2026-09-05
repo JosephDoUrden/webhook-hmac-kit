@@ -42,15 +42,19 @@ export function normalizeSecrets(
   const unique: Uint8Array[] = [];
   for (const secret of list) {
     const bytes = toKeyBytes(secret);
-    if (!unique.some((seen) => bytesEqual(seen, bytes))) {
-      unique.push(bytes);
+    if (unique.some((seen) => bytesEqual(seen, bytes))) {
+      continue;
     }
-  }
+    unique.push(bytes);
 
-  if (unique.length > MAX_SECRETS) {
-    throw new Error(
-      `secrets must not contain more than ${MAX_SECRETS} distinct entries, got ${unique.length}`,
-    );
+    // Refused at the entry that breaks the cap rather than after the whole list has been walked.
+    // The dedupe is the quadratic part — every new entry is compared against every kept one — so
+    // stopping here is what bounds it, and a caller who passed ten thousand secrets does not get
+    // that work done for them before being told no. The count is left out of the message because
+    // by then it has not been counted: the honest thing to report is the limit.
+    if (unique.length > MAX_SECRETS) {
+      throw new Error(`secrets must not contain more than ${MAX_SECRETS} distinct entries`);
+    }
   }
 
   return unique as [Uint8Array, ...Uint8Array[]];

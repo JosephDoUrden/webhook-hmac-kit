@@ -228,6 +228,17 @@ describe('secret list hygiene', () => {
     expect(() => normalizeSecrets(many.slice(0, 16))).not.toThrow();
   });
 
+  // The cap is refused at the entry that breaks it, so the message cannot honestly report a total
+  // it never counted. 500 distinct entries and 17 get the same sentence.
+  it('refuses an oversized list without claiming to have counted it', () => {
+    const many = Array.from({ length: 500 }, (_, i) => `whsec_${i}`);
+
+    expect(() => normalizeSecrets(many)).toThrow(
+      'secrets must not contain more than 16 distinct entries',
+    );
+    expect(() => normalizeSecrets(many)).not.toThrow(/got \d+/);
+  });
+
   it('counts duplicates once against the cap', () => {
     const many = Array.from({ length: 40 }, () => TEST_SECRET);
     expect(() => normalizeSecrets(many)).not.toThrow();
