@@ -409,6 +409,29 @@ describe('Express webhookVerifier header handling', () => {
     expect(next).not.toHaveBeenCalled();
   });
 
+  it('matches a configured header name that was written in header case', async () => {
+    const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
+    const req = createMockReq({
+      headers: {
+        'x-custom-sig': signature,
+        'x-custom-ts': String(TEST_TIMESTAMP),
+        'x-custom-nonce': firstVector.nonce,
+      },
+    });
+    const res = createMockRes();
+    const next = vi.fn();
+
+    webhookVerifier({
+      secrets: TEST_SECRET,
+      signatureHeader: 'X-Custom-Sig',
+      timestampHeader: 'X-Custom-Ts',
+      nonceHeader: 'X-Custom-Nonce',
+    })(req, res, next);
+
+    await vi.waitFor(() => expect(next).toHaveBeenCalled());
+    expect(req.webhookVerified).toBe(true);
+  });
+
   it('accepts a header the framework kept as a single-entry array', async () => {
     const signature = signPayload(firstVector.payload, TEST_TIMESTAMP, firstVector.nonce);
     const req = createMockReq({

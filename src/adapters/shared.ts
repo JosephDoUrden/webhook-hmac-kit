@@ -26,11 +26,17 @@ export interface AdapterHeaders {
   nonceHeader: string;
 }
 
+/**
+ * Header names are case-insensitive on the wire, and Node lower-cases the ones it parses, so a name
+ * configured as 'X-Webhook-Signature' would look up a key that is never there and report the header
+ * as missing. Lower-casing the configured names makes the option behave the way the spelling in
+ * anyone's documentation suggests it will.
+ */
 export function getHeaderNames(options: AdapterOptions): AdapterHeaders {
   return {
-    signatureHeader: options.signatureHeader ?? DEFAULT_SIGNATURE_HEADER,
-    timestampHeader: options.timestampHeader ?? DEFAULT_TIMESTAMP_HEADER,
-    nonceHeader: options.nonceHeader ?? DEFAULT_NONCE_HEADER,
+    signatureHeader: (options.signatureHeader ?? DEFAULT_SIGNATURE_HEADER).toLowerCase(),
+    timestampHeader: (options.timestampHeader ?? DEFAULT_TIMESTAMP_HEADER).toLowerCase(),
+    nonceHeader: (options.nonceHeader ?? DEFAULT_NONCE_HEADER).toLowerCase(),
   };
 }
 
