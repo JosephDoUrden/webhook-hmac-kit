@@ -44,6 +44,35 @@ describe('public surface', () => {
     expect(error.message).toMatch(/--no-experimental-global-webcrypto/);
   });
 
+  // The Standard Webhooks module ships as three functions and its types, and nothing else. There is
+  // no adapter flag: one endpoint speaks one scheme, and a boolean that swapped which headers an
+  // adapter reads would have given `secrets` two meanings and quietly dropped replay protection.
+  it('exports the Standard Webhooks functions and no adapter switch', () => {
+    for (const name of [
+      'parseStandardWebhooksSecret',
+      'signStandardWebhooks',
+      'verifyStandardWebhooks',
+    ]) {
+      expect(Object.keys(api)).toContain(name);
+    }
+    expect(Object.keys(api)).not.toContain('buildStandardWebhooksBytes');
+  });
+
+  // The two schemes are told apart by their types as well as their functions. Passing a whsec_
+  // string where a raw secret belongs, or the other way round, is a different key rather than an
+  // error, so the type names are part of what stops it.
+  it('keeps the two secret types apart on the type surface', () => {
+    const swSecret: api.StandardWebhooksSecret = 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw';
+    const headers: api.StandardWebhooksHeaders = {
+      'webhook-id': 'msg_1',
+      'webhook-timestamp': '1614265330',
+      'webhook-signature': 'v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE=',
+    };
+
+    expect(api.parseStandardWebhooksSecret(swSecret)).toHaveLength(24);
+    expect(headers['webhook-id']).toBe('msg_1');
+  });
+
   // Nothing on the public surface asks for or hands back a Buffer. The digest a caller parses out
   // of a header has to be usable on a runtime that has never heard of Node.
   it('speaks Uint8Array, not Buffer', () => {
