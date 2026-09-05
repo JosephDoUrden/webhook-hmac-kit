@@ -1,7 +1,6 @@
 export {
   NONCE_PATTERN,
   buildCanonicalBytes,
-  buildCanonicalString,
   isValidNonce,
   isValidTimestamp,
 } from './canonical.js';

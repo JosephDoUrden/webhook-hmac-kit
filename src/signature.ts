@@ -1,3 +1,5 @@
+import { SIGNATURE_VERSION } from './types.js';
+
 /**
  * Wire form of a signature: `{version}={hex}`, for example `v2=3f9a...`.
  *
@@ -17,8 +19,14 @@ export interface ParsedSignature {
   digest: Buffer;
 }
 
-export function formatSignature(version: string, digest: Buffer): string {
-  return `${version}=${digest.toString('hex')}`;
+/**
+ * Formats a digest for the wire in the scheme this library implements.
+ *
+ * The version is not a parameter. A caller that could pass one could put a version on the wire that
+ * nothing here will ever accept, and the resulting 401 would look like a receiver bug.
+ */
+export function formatSignature(digest: Buffer): string {
+  return `${SIGNATURE_VERSION}=${digest.toString('hex')}`;
 }
 
 /** Returns null for anything that is not exactly `{version}={64 hex}`. */
