@@ -1,6 +1,6 @@
 {
   "name": "webhook-hmac-kit",
-  "version": "1.0.0",
+  "version": "2.0.0",
   "description": "Lightweight, production-ready toolkit for signing and verifying webhook requests using HMAC-SHA256",
   "type": "module",
   "main": "./dist/index.cjs",
