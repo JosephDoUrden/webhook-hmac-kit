@@ -39,3 +39,35 @@ jobs:
           test -f dist/index.cjs
           test -f dist/index.d.ts
           test -f dist/index.d.cts
+
+  # The Node matrix above cannot say anything about the runtimes this library was ported to Web
+  # Crypto for. This job runs the built package on all three, through one plain script - vitest only
+  # runs on Node, and @cloudflare/vitest-plugin (the successor to vitest-pool-workers) needs
+  # vitest >= 4.1 while this repo is on 2, so workerd waits for its own upgrade commit.
+  edge-smoke:
+    name: Smoke on Node, Deno and Bun
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # setup-deno's "v2" is a branch, not an immutable tag, so it is pinned by commit.
+      - uses: denoland/setup-deno@22d081ff2d3a40755e97629de92e3bcbfa7cf2ed # v2
+        with:
+          deno-version: v2.x
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      - run: npm ci
+      - run: npm run build
+
+      - run: node test/smoke/smoke.mjs
+      - run: deno run test/smoke/smoke.mjs
+      - run: bun test/smoke/smoke.mjs
