@@ -190,6 +190,85 @@ describe('verifyWebhook', () => {
       ).rejects.toThrow(WebhookSignatureError);
     });
 
+    it('rejects a bare hex digest with no scheme version', async () => {
+      const hex = firstVector.signature.slice('v2='.length);
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: hex,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
+    it('rejects a signature with an unsupported scheme version', async () => {
+      const hex = firstVector.signature.slice('v2='.length);
+      for (const version of ['v1', 'v3', 'v22', 'V2']) {
+        await expect(
+          verifyWebhook({
+            secret: TEST_SECRET,
+            payload: firstVector.payload,
+            signature: `${version}=${hex}`,
+            timestamp: firstVector.timestamp,
+            nonce: firstVector.nonce,
+          }),
+        ).rejects.toThrow(WebhookSignatureError);
+      }
+    });
+
+    it('rejects a valid signature with trailing garbage', async () => {
+      for (const suffix of ['zz', ' ', '!!!!', 'ZZZZZZZZ', '0']) {
+        await expect(
+          verifyWebhook({
+            secret: TEST_SECRET,
+            payload: firstVector.payload,
+            signature: firstVector.signature + suffix,
+            timestamp: firstVector.timestamp,
+            nonce: firstVector.nonce,
+          }),
+        ).rejects.toThrow(WebhookSignatureError);
+      }
+    });
+
+    it('rejects upper-case hex', async () => {
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature.toUpperCase().replace('V2', 'v2'),
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
+    it('rejects a folded duplicate header value ("sigA, sigB")', async () => {
+      const folded = `${firstVector.signature}, v2=${'f'.repeat(64)}`;
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: folded,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
+    it('rejects surrounding whitespace', async () => {
+      await expect(
+        verifyWebhook({
+          secret: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: ` ${firstVector.signature}`,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+        }),
+      ).rejects.toThrow(WebhookSignatureError);
+    });
+
     it('rejects empty signature', async () => {
       await expect(
         verifyWebhook({

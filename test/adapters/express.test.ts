@@ -137,7 +137,7 @@ describe('Express webhookVerifier middleware', () => {
   it('returns 401 for invalid signature', async () => {
     const req = createMockReq({
       headers: {
-        'x-webhook-signature': 'a'.repeat(64),
+        'x-webhook-signature': `v2=${'a'.repeat(64)}`,
         'x-webhook-timestamp': String(TEST_TIMESTAMP),
         'x-webhook-nonce': firstVector.nonce,
       },

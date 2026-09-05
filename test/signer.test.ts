@@ -15,6 +15,16 @@ describe('signWebhook', () => {
     });
   }
 
+  it('emits the scheme version and a lower-case hex digest on the wire', () => {
+    const { signature } = signWebhook({
+      secret: TEST_SECRET,
+      payload: 'test',
+      timestamp: 1000,
+      nonce: 'n',
+    });
+    expect(signature).toMatch(/^v2=[0-9a-f]{64}$/);
+  });
+
   it('rejects empty secret', () => {
     expect(() =>
       signWebhook({
