@@ -42,8 +42,8 @@ jobs:
 
   # The Node matrix above cannot say anything about the runtimes this library was ported to Web
   # Crypto for. This job runs the built package on all three, through one plain script - vitest only
-  # runs on Node, and @cloudflare/vitest-plugin (the successor to vitest-pool-workers) needs
-  # vitest >= 4.1 while this repo is on 2, so workerd waits for its own upgrade commit.
+  # runs on Node. @cloudflare/vitest-plugin (the successor to vitest-pool-workers) could cover
+  # workerd now that vitest is on 5; that is its own commit.
   edge-smoke:
     name: Smoke on Node, Deno and Bun
     runs-on: ubuntu-latest
