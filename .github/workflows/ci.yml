@@ -72,3 +72,20 @@ jobs:
       - run: node test/smoke/smoke.mjs
       - run: deno run test/smoke/smoke.mjs
       - run: bun test/smoke/smoke.mjs
+
+  # One stable check name for the branch ruleset to require. Matrix legs rename themselves when the
+  # matrix changes and a skipped leg leaves a PR waiting forever, so the ruleset points at this job
+  # only. It fails unless every job above succeeded.
+  gate:
+    name: gate
+    if: always()
+    needs: [test, edge-smoke]
+    runs-on: ubuntu-latest
+    env:
+      TEST: ${{ needs.test.result }}
+      EDGE_SMOKE: ${{ needs.edge-smoke.result }}
+    steps:
+      - run: |
+          echo "test=$TEST edge-smoke=$EDGE_SMOKE"
+          test "$TEST" = success
+          test "$EDGE_SMOKE" = success
