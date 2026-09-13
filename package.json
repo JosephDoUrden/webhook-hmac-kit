@@ -88,7 +88,7 @@
     "@types/node": "^22",
     "fast-check": "4.9.0",
     "tsup": "^8.0.0",
-    "typescript": "^5.5.0",
+    "typescript": "^7.0.2",
     "vite": "^8.2.2",
     "vitest": "^5.0.0"
   }
