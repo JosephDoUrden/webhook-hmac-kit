@@ -84,7 +84,7 @@
     "url": "https://github.com/JosephDoUrden/webhook-hmac-kit/issues"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.0",
+    "@biomejs/biome": "^2.5.15",
     "@types/node": "^22",
     "fast-check": "4.9.0",
     "tsup": "^8.0.0",
