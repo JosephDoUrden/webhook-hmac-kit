@@ -11,7 +11,7 @@
  *
  *   npm run build
  *   npm run --prefix test/smoke/workerd bundle
- *   npx --prefix test/smoke/workerd workerd test test/smoke/workerd/config.capnp
+ *   npm test --prefix test/smoke/workerd
  */
 
 import { verifyStandardWebhooksRequest } from '../../../dist/adapters/web.js';

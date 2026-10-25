@@ -57,7 +57,7 @@ The suite lives in `test/`. A few things worth knowing:
   ```sh
   npm install --prefix test/smoke/workerd
   npm run --prefix test/smoke/workerd bundle
-  npx --prefix test/smoke/workerd workerd test test/smoke/workerd/config.capnp
+  npm test --prefix test/smoke/workerd
   ```
 
 New behaviour needs a test. Bug fixes need a test that fails before the fix and passes after.

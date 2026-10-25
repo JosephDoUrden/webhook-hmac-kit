@@ -7,6 +7,7 @@
     "test": "workerd test config.capnp"
   },
   "devDependencies": {
+    "esbuild": "0.27.2",
     "workerd": "1.20261025.1"
   }
 }
