@@ -1,6 +1,6 @@
 {
   "name": "webhook-hmac-kit",
-  "version": "2.2.0",
+  "version": "2.3.0",
   "description": "Sign and verify webhooks with HMAC-SHA256 on Web Crypto. Timestamp checks, nonce replay protection, secret rotation, Web Request, Hono, Express, Fastify and Nest adapters.",
   "type": "module",
   "main": "./dist/index.cjs",
