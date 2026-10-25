@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Fixed
+
+- README: the replay store's TTL must exceed 2 × tolerance (2 × tolerance + 1 seconds),
+  not 1 × tolerance. The window is symmetric, so a request stamped at `now + tolerance`
+  stays verifiable for 2 × tolerance. Corrected in Replay Protection and the Threat Model.
+
+### Changed
+
+- README: the Replay Protection recipe now uses an atomic Redis `SET ... NX` in place
+  of the racy check-then-set, says a throwing validator fails closed with a 401, says
+  why Workers KV is not a replay store, and adds a single-instance in-memory example.
+
 ## [2.3.0] - 2026-10-25
 
 ### Added
