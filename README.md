@@ -3,16 +3,18 @@
 [![npm version](https://img.shields.io/npm/v/webhook-hmac-kit)](https://www.npmjs.com/package/webhook-hmac-kit)
 [![license](https://img.shields.io/npm/l/webhook-hmac-kit)](https://github.com/JosephDoUrden/webhook-hmac-kit/blob/main/LICENSE)
 
-Sign and verify webhook requests with HMAC-SHA256: timestamp validation, nonce-based
-replay protection, secret rotation, and adapters for Express, Fastify and NestJS.
-
-![demo](docs/demo.gif)
+Verify [Standard Webhooks](https://www.standardwebhooks.com) requests (`webhook-id`,
+`webhook-timestamp`, `webhook-signature`, `whsec_` secrets) over the raw bytes, with a
+timestamp tolerance window and key rotation, and no runtime dependencies. When you control
+both ends, it also signs and verifies in its own format, with nonce-based replay protection
+and adapters for Express, Fastify and NestJS.
 
 Runs on Web Crypto only, so it works the same way on Node, Cloudflare Workers, Deno and
 Bun with no bundler configuration and no runtime branch.
 
-**2.0.0 is a breaking release.** The wire format changed. See [CHANGELOG.md](CHANGELOG.md)
-before upgrading in place: a v1 signature is refused outright, with no dual-accept window.
+**2.0.0 is a breaking release.** The library's [own wire format](#own-format-v2) changed. See
+[CHANGELOG.md](CHANGELOG.md) before upgrading in place: a v1 signature is refused outright,
+with no dual-accept window.
 
 ## Install
 
@@ -22,205 +24,64 @@ npm install webhook-hmac-kit
 
 ## Quick Start
 
-```ts
-import { signWebhook, verifyWebhook } from 'webhook-hmac-kit';
-
-// --- Sender ---
-const payload = JSON.stringify({ event: 'payment.completed', amount: 4999 });
-const timestamp = Math.floor(Date.now() / 1000);
-const nonce = crypto.randomUUID();
-
-const { signature } = await signWebhook({ secrets: 'whsec_your_secret_key', payload, timestamp, nonce });
-
-// Send the payload with these three headers, built from the same values you just signed:
-//   x-webhook-signature: signature
-//   x-webhook-timestamp: String(timestamp)
-//   x-webhook-nonce:     nonce
-
-// --- Receiver ---
-const result = await verifyWebhook({
-  secrets: 'whsec_your_secret_key',
-  payload: req.body,                         // the exact bytes you received, see below
-  signature: req.headers['x-webhook-signature'],
-  timestamp: Number(req.headers['x-webhook-timestamp']),
-  nonce: req.headers['x-webhook-nonce'],
-});
-// result.valid === true (throws a typed error on failure)
-```
-
-`signWebhook` is not `async`: it validates its arguments synchronously, so a bad one
-throws immediately, and returns a plain `Promise` for the HMAC step alone.
-`verifyWebhook` is `async` throughout.
-
-`payload` must be the exact bytes that went on the wire, not a re-serialised object.
-Configure your framework to hand you the raw body (`express.raw()`, Fastify's
-`rawBody`, NestJS's `rawBody: true`) and pass that straight through. Never
-`JSON.parse` then `JSON.stringify` before verifying: that changes key order and
-whitespace and breaks the signature. Verify first, parse second.
-
-## Wire Format
-
-The signed value is:
-
-```
-v2.{timestamp}.{nonce}.{payload}
-```
-
-built as bytes: the `v2.{timestamp}.{nonce}.` prefix is UTF-8 encoded, and the payload
-follows unchanged, as the exact bytes it arrived in if you passed a `Uint8Array`, or
-UTF-8 encoded if you passed a string. The signature header carries the version and a
-lower-case hex digest, nothing else:
-
-```
-x-webhook-signature: v2=<64 lower-case hex characters>
-```
-
-Upper-case hex is rejected. A sender in another language must format the digest with
-`%x`, not `%X`.
-
-- **Nonce** must match `^[A-Za-z0-9_-]{1,64}$`, checked before any HMAC work runs. Dot-free
-  by construction: the dot is the field delimiter, so a nonce that could contain one
-  would make the encoding ambiguous.
-- **Timestamp** is Unix seconds, a non-negative integer, matching `^(0|[1-9]\d*)$` on
-  the wire: no leading zeros, no `+`, no exponent form, no whitespace. The value that
-  gets checked is the value the sender actually signed, not whatever `Number()` coerces.
-- **Tolerance** defaults to 300 seconds, checked as `|now - timestamp| <= tolerance`.
-  Pass `tolerance` to `verifyWebhook` to change it. `now` is the system clock unless you
-  pass `now` (Unix seconds), which both verifiers take. It is there for replaying a
-  recorded request or a test vector, not for production traffic.
-
-## Rotation
+### Receiving
 
 ```ts
-await verifyWebhook({ secrets: [currentSecret, retiringSecret], ...rest });
-```
+import { verifyStandardWebhooks, WebhookError } from 'webhook-hmac-kit';
 
-Sign with one secret. Verify against a list: a signature made with any entry in it is
-accepted. Keep the new secret first and the retiring one after it while both are live,
-then drop the old one. A list may hold at most 16 distinct secrets; duplicates are
-collapsed before that cap is applied.
-
-## Replay Protection
-
-```ts
-await verifyWebhook({
-  ...rest,
-  nonceValidator: async (nonce) => {
-    const key = `webhook:nonce:${nonce}`;
-    if (await redis.exists(key)) return false;
-    await redis.set(key, '1', 'EX', 300);
-    return true;
-  },
-});
-```
-
-This library does not store anything. It makes the nonce a safe cache key, dot-free,
-bounded length, and calls your `nonceValidator` after the signature has already
-checked out, never before. Replay protection is exactly as strong as the store behind
-that callback: its TTL needs to be at least your tolerance window, and it needs to be
-shared across every receiving instance, or a nonce accepted on one instance replays
-cleanly on another.
-
-## Adapters
-
-All three need the raw request body, same as the core functions.
-
-### Express
-
-```ts
-import { webhookVerifier } from 'webhook-hmac-kit/express';
-
-app.post(
-  '/webhook',
-  express.raw({ type: 'application/json' }),  // req.body must stay bytes here
-  webhookVerifier({
-    secrets: [process.env.WEBHOOK_SECRET_CURRENT, process.env.WEBHOOK_SECRET_OLD],
-    onError: (err) => logger.warn('webhook rejected', err),
-  }),
-  (req, res) => {
-    // req.webhookVerified === true; req.body is still bytes, parse it yourself.
-    res.sendStatus(200);
-  },
-);
-```
-
-### Fastify
-
-```ts
-import fastifyRawBody from 'fastify-raw-body';
-import { webhookPlugin } from 'webhook-hmac-kit/fastify';
-
-await app.register(fastifyRawBody);
-await app.register(webhookPlugin, { secrets: process.env.WEBHOOK_SECRET });
-
-app.post('/webhook', { preHandler: app.verifyWebhook }, async (request) => {
-  return { ok: true };
-});
-```
-
-### NestJS
-
-```ts
-// main.ts: request.rawBody needs this at bootstrap
-const app = await NestFactory.create(AppModule, { rawBody: true });
-
-// webhook.controller.ts
-import { UseGuards, Post } from '@nestjs/common';
-import { WebhookGuard } from 'webhook-hmac-kit/nest';
-
-@UseGuards(WebhookGuard)
-@Post('webhook')
-handleWebhook() {
-  return { ok: true };
+// rawBody: the body exactly as received, as a Uint8Array.
+// headers: the request headers as an object, e.g. Node's req.headers.
+try {
+  await verifyStandardWebhooks({
+    secrets: 'whsec_PLACEHOLDERxREPLACExWITHxYOURxOWNxSECRET',
+    headers,
+    payload: rawBody,
+  });
+} catch (err) {
+  if (err instanceof WebhookError) return reject(401); // bad signature, stale timestamp
+  throw err;                                           // your configuration, not the caller's
 }
+
+const event = JSON.parse(new TextDecoder().decode(rawBody)); // verify first, parse second
 ```
 
-`WebhookModule.forRoot({ secrets: ... })` registers `WEBHOOK_OPTIONS` and `WebhookGuard`
-in one call, but `WebhookGuard` takes its options as a constructor argument, so it is not
-injectable as a bare class provider: Nest has no way to resolve that argument on its own,
-and construction fails. Provide it with a factory instead:
+The examples use a placeholder; use the secret your sender gave you. Pass every live
+secret as an array to rotate keys. `tolerance` changes the 300-second window. `now` (Unix
+seconds) verifies a recorded request or a test vector against the time it was sent; it is
+a testing aid, never something to set in production.
+
+There is no Standard Webhooks adapter: the Express, Fastify and NestJS
+[adapters](#adapters) verify this library's own format only. Get the raw body from your
+framework (`express.raw()`, Fastify's `rawBody`, NestJS's `rawBody: true`) and call
+`verifyStandardWebhooks` from your handler as above. The same call works unchanged on
+Workers, Deno and Bun.
+
+### Sending
 
 ```ts
-import { WebhookGuard, WEBHOOK_OPTIONS } from 'webhook-hmac-kit/nest';
+import { signStandardWebhooks } from 'webhook-hmac-kit';
 
-providers: [
-  { provide: WEBHOOK_OPTIONS, useValue: { secrets: process.env.WEBHOOK_SECRET } },
-  { provide: WebhookGuard, useFactory: (options) => new WebhookGuard(options), inject: [WEBHOOK_OPTIONS] },
-],
-```
-
-or skip Nest's container for the guard entirely and construct it yourself.
-
-**Nest exception note.** `WebhookGuard` throws its own local exception class, because
-this library has no dependency on `@nestjs/common` and so cannot throw *its*
-`HttpException`. Nest's `BaseExceptionFilter` matches by `instanceof` against its own
-class, so a global exception filter renders this as a 500, not the intended 401,
-unless you catch and re-map it: the intended status is on `.getStatus()`, the real
-reason is in `onError` either way.
-
-## Standard Webhooks
-
-Some providers sign with [Standard Webhooks](https://www.standardwebhooks.com) rather
-than a scheme of their own, so the package ships a signer and a verifier for it
-alongside its own. Three functions, no new dependency, no adapter changes.
-
-```ts
-import { signStandardWebhooks, verifyStandardWebhooks } from 'webhook-hmac-kit';
+const body = JSON.stringify({ type: 'invoice.paid', data: { id: 'inv_123' } });
 
 const headers = await signStandardWebhooks({
-  secrets: 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw',
-  messageId: 'msg_p5jXN8AQM9LWM0D4loKWxJek',
+  secrets: 'whsec_PLACEHOLDERxREPLACExWITHxYOURxOWNxSECRET',
+  messageId: 'msg_p5jXN8AQM9LWM0D4loKWxJek', // per event, the same on every retry
   timestamp: Math.floor(Date.now() / 1000),
   payload: body,
 });
-// { 'webhook-id': …, 'webhook-timestamp': …, 'webhook-signature': 'v1,<base64>' }
 
-await verifyStandardWebhooks({ secrets, headers: req.headers, payload: rawBody });
+await fetch('https://example.com/webhook', {
+  method: 'POST',
+  headers: { 'content-type': 'application/json', ...headers },
+  body,
+});
 ```
 
-`verifyStandardWebhooks` resolves to `{ valid: true }` or throws the same
-`WebhookError` subclasses the rest of the library throws, so the error handling below
-applies unchanged — for anything that is a failed verification. Two kinds of failure are
+## Standard Webhooks
+
+`verifyStandardWebhooks` resolves to `{ valid: true }` or throws the same `WebhookError`
+subclasses as `verifyWebhook`, so the error handling below applies unchanged, for anything
+that is a failed verification. Two kinds of failure are
 not: a mistake in your own arguments (a `tolerance` that is not a non-negative finite
 number, a secret outside the base64 grammar) throws a plain `Error` or `TypeError`, and
 a runtime whose Web Crypto misbehaves throws a plain `Error` too, the same way
@@ -247,8 +108,8 @@ so the rule is operational: generate a separate secret. A test pins the collisio
 and a run of digits re-splits into a different, equally valid message carrying the same
 signature. It cannot be fixed without emitting signatures no conforming receiver would
 accept, so this module does not try, and gives you no replay hook keyed on it. If you
-need replay protection with a key you can actually trust, use this package's own
-scheme, where the nonce is dot-free by construction.
+need replay protection with a key you can actually trust, use this package's
+[own scheme](#own-format-v2), where the nonce is dot-free by construction.
 
 ### What differs on the way out and on the way in
 
@@ -294,6 +155,195 @@ point at; those two vectors are what exists.
 If your provider still sends the older `svix-id`, `svix-timestamp` and `svix-signature`
 names, map them onto the `webhook-*` names before calling: the values are identical, and
 `verifyStandardWebhooks` looks only for the specified names.
+
+## Own format (v2)
+
+When you control both the sender and the receiver, the library has a scheme of its own: a
+dot-free nonce in the signed value, so replay protection can key on something
+authenticated, plus framework adapters. Nobody else sends this format, so do not reach for
+it to receive from a third party.
+
+![demo](docs/demo.gif)
+
+### Quick Start (v2)
+
+```ts
+import { signWebhook, verifyWebhook } from 'webhook-hmac-kit';
+
+// --- Sender ---
+const payload = JSON.stringify({ event: 'payment.completed', amount: 4999 });
+const timestamp = Math.floor(Date.now() / 1000);
+const nonce = crypto.randomUUID();
+
+const { signature } = await signWebhook({ secrets: 'whsec_your_secret_key', payload, timestamp, nonce });
+
+// Send the payload with these three headers, built from the same values you just signed:
+//   x-webhook-signature: signature
+//   x-webhook-timestamp: String(timestamp)
+//   x-webhook-nonce:     nonce
+
+// --- Receiver ---
+const result = await verifyWebhook({
+  secrets: 'whsec_your_secret_key',
+  payload: req.body,                         // the exact bytes you received, see below
+  signature: req.headers['x-webhook-signature'],
+  timestamp: Number(req.headers['x-webhook-timestamp']),
+  nonce: req.headers['x-webhook-nonce'],
+});
+// result.valid === true (throws a typed error on failure)
+```
+
+`signWebhook` is not `async`: it validates its arguments synchronously, so a bad one
+throws immediately, and returns a plain `Promise` for the HMAC step alone.
+`verifyWebhook` is `async` throughout.
+
+`payload` must be the exact bytes that went on the wire, not a re-serialised object.
+Configure your framework to hand you the raw body (`express.raw()`, Fastify's
+`rawBody`, NestJS's `rawBody: true`) and pass that straight through. Never
+`JSON.parse` then `JSON.stringify` before verifying: that changes key order and
+whitespace and breaks the signature. Verify first, parse second.
+
+### Wire Format
+
+The signed value is:
+
+```
+v2.{timestamp}.{nonce}.{payload}
+```
+
+built as bytes: the `v2.{timestamp}.{nonce}.` prefix is UTF-8 encoded, and the payload
+follows unchanged, as the exact bytes it arrived in if you passed a `Uint8Array`, or
+UTF-8 encoded if you passed a string. The signature header carries the version and a
+lower-case hex digest, nothing else:
+
+```
+x-webhook-signature: v2=<64 lower-case hex characters>
+```
+
+Upper-case hex is rejected. A sender in another language must format the digest with
+`%x`, not `%X`.
+
+- **Nonce** must match `^[A-Za-z0-9_-]{1,64}$`, checked before any HMAC work runs. Dot-free
+  by construction: the dot is the field delimiter, so a nonce that could contain one
+  would make the encoding ambiguous.
+- **Timestamp** is Unix seconds, a non-negative integer, matching `^(0|[1-9]\d*)$` on
+  the wire: no leading zeros, no `+`, no exponent form, no whitespace. The value that
+  gets checked is the value the sender actually signed, not whatever `Number()` coerces.
+- **Tolerance** defaults to 300 seconds, checked as `|now - timestamp| <= tolerance`.
+  Pass `tolerance` to `verifyWebhook` to change it. `now` is the system clock unless you
+  pass `now` (Unix seconds), which both verifiers take. It is there for replaying a
+  recorded request or a test vector, not for production traffic.
+
+### Rotation
+
+```ts
+await verifyWebhook({ secrets: [currentSecret, retiringSecret], ...rest });
+```
+
+Sign with one secret. Verify against a list: a signature made with any entry in it is
+accepted. Keep the new secret first and the retiring one after it while both are live,
+then drop the old one. A list may hold at most 16 distinct secrets; duplicates are
+collapsed before that cap is applied.
+
+### Replay Protection
+
+```ts
+await verifyWebhook({
+  ...rest,
+  nonceValidator: async (nonce) => {
+    const key = `webhook:nonce:${nonce}`;
+    if (await redis.exists(key)) return false;
+    await redis.set(key, '1', 'EX', 300);
+    return true;
+  },
+});
+```
+
+This library does not store anything. It makes the nonce a safe cache key, dot-free,
+bounded length, and calls your `nonceValidator` after the signature has already
+checked out, never before. Replay protection is exactly as strong as the store behind
+that callback: its TTL needs to be at least your tolerance window, and it needs to be
+shared across every receiving instance, or a nonce accepted on one instance replays
+cleanly on another.
+
+### Adapters
+
+All three need the raw request body, same as the core functions. They verify the v2
+format only; for Standard Webhooks, call `verifyStandardWebhooks` from your handler as in
+the [Quick Start](#quick-start).
+
+#### Express
+
+```ts
+import { webhookVerifier } from 'webhook-hmac-kit/express';
+
+app.post(
+  '/webhook',
+  express.raw({ type: 'application/json' }),  // req.body must stay bytes here
+  webhookVerifier({
+    secrets: [process.env.WEBHOOK_SECRET_CURRENT, process.env.WEBHOOK_SECRET_OLD],
+    onError: (err) => logger.warn('webhook rejected', err),
+  }),
+  (req, res) => {
+    // req.webhookVerified === true; req.body is still bytes, parse it yourself.
+    res.sendStatus(200);
+  },
+);
+```
+
+#### Fastify
+
+```ts
+import fastifyRawBody from 'fastify-raw-body';
+import { webhookPlugin } from 'webhook-hmac-kit/fastify';
+
+await app.register(fastifyRawBody);
+await app.register(webhookPlugin, { secrets: process.env.WEBHOOK_SECRET });
+
+app.post('/webhook', { preHandler: app.verifyWebhook }, async (request) => {
+  return { ok: true };
+});
+```
+
+#### NestJS
+
+```ts
+// main.ts: request.rawBody needs this at bootstrap
+const app = await NestFactory.create(AppModule, { rawBody: true });
+
+// webhook.controller.ts
+import { UseGuards, Post } from '@nestjs/common';
+import { WebhookGuard } from 'webhook-hmac-kit/nest';
+
+@UseGuards(WebhookGuard)
+@Post('webhook')
+handleWebhook() {
+  return { ok: true };
+}
+```
+
+`WebhookModule.forRoot({ secrets: ... })` registers `WEBHOOK_OPTIONS` and `WebhookGuard`
+in one call, but `WebhookGuard` takes its options as a constructor argument, so it is not
+injectable as a bare class provider: Nest has no way to resolve that argument on its own,
+and construction fails. Provide it with a factory instead:
+
+```ts
+import { WebhookGuard, WEBHOOK_OPTIONS } from 'webhook-hmac-kit/nest';
+
+providers: [
+  { provide: WEBHOOK_OPTIONS, useValue: { secrets: process.env.WEBHOOK_SECRET } },
+  { provide: WebhookGuard, useFactory: (options) => new WebhookGuard(options), inject: [WEBHOOK_OPTIONS] },
+],
+```
+
+or skip Nest's container for the guard entirely and construct it yourself.
+
+**Nest exception note.** `WebhookGuard` throws its own local exception class, because
+this library has no dependency on `@nestjs/common` and so cannot throw *its*
+`HttpException`. Nest's `BaseExceptionFilter` matches by `instanceof` against its own
+class, so a global exception filter renders this as a 500, not the intended 401,
+unless you catch and re-map it: the intended status is on `.getStatus()`, the real
+reason is in `onError` either way.
 
 ## Error Handling
 
