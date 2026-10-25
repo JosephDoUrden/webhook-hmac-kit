@@ -39,6 +39,22 @@ jobs:
           test -f dist/index.cjs
           test -f dist/index.d.ts
           test -f dist/index.d.cts
+          test -f dist/cli.js
+          # The CLI loads the library build beside it, not a copy bundled from src/. esbuild
+          # heads every bundled module with a `// path` comment; a bare 'src/' match would trip
+          # on the upstream file paths in the corpus's source fields.
+          grep -q 'from "./index.js"' dist/cli.js
+          ! grep -q '^// src/' dist/cli.js
+
+      # The committed corpus is exactly what the generator writes.
+      - name: Check generated vectors
+        run: node scripts/gen-vectors.mjs && git diff --exit-code -- vectors/
+
+      # The corpus through the built package, the way someone running the bin would.
+      - name: Verify test vectors
+        run: |
+          node dist/cli.js vectors --verify vectors/standard-webhooks.json
+          node dist/cli.js vectors --verify vectors/v2.json
 
   # The Node matrix above cannot say anything about the runtimes this library was ported to Web
   # Crypto for. This job runs the built package on all three, through one plain script - vitest only

@@ -134,6 +134,54 @@ describe('verifyWebhook', () => {
       });
       expect(result).toEqual({ valid: true });
     });
+
+    // A fixed clock lets a recorded request be replayed against the window it was sent in, which
+    // is what the vector corpus and its CLI need. The system clock is set far away on purpose so a
+    // pass can only come from `now`.
+    it('measures the window from `now` when one is given', async () => {
+      vi.setSystemTime((TEST_TIMESTAMP + 100_000) * 1000);
+
+      const result = await verifyWebhook({
+        secrets: TEST_SECRET,
+        payload: firstVector.payload,
+        signature: firstVector.signature,
+        timestamp: firstVector.timestamp,
+        nonce: firstVector.nonce,
+        now: TEST_TIMESTAMP + 300,
+      });
+      expect(result).toEqual({ valid: true });
+    });
+
+    it('rejects against `now` even when the system clock would accept', async () => {
+      await expect(
+        verifyWebhook({
+          secrets: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+          now: TEST_TIMESTAMP + 301,
+        }),
+      ).rejects.toMatchObject({ code: 'WEBHOOK_TIMESTAMP_EXPIRED' });
+    });
+
+    it.each([
+      ['NaN', Number.NaN],
+      ['a negative value', -1],
+      ['a fraction', TEST_TIMESTAMP + 0.5],
+      ['milliseconds past the safe integer range', Number.MAX_SAFE_INTEGER + 2],
+    ])('refuses `now` given as %s', async (_name, now) => {
+      await expect(
+        verifyWebhook({
+          secrets: TEST_SECRET,
+          payload: firstVector.payload,
+          signature: firstVector.signature,
+          timestamp: firstVector.timestamp,
+          nonce: firstVector.nonce,
+          now,
+        }),
+      ).rejects.toThrow('now must be a non-negative integer (unix seconds)');
+    });
   });
 
   describe('signature validation', () => {

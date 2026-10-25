@@ -693,6 +693,47 @@ describe('the timestamp', () => {
     ).resolves.toEqual({ valid: true });
   });
 
+  it('measures the window from `now` when one is given', async () => {
+    atVectorTime(VECTOR_A.timestamp + 100_000);
+
+    await expect(
+      verifyStandardWebhooks({
+        secrets: VECTOR_A.secret,
+        headers: headersFor(VECTOR_A),
+        payload: VECTOR_A.payload,
+        now: VECTOR_A.timestamp - 300,
+      }),
+    ).resolves.toEqual({ valid: true });
+  });
+
+  it('rejects against `now` even when the system clock would accept', async () => {
+    atVectorTime(VECTOR_A.timestamp);
+
+    await expect(
+      verifyStandardWebhooks({
+        secrets: VECTOR_A.secret,
+        headers: headersFor(VECTOR_A),
+        payload: VECTOR_A.payload,
+        now: VECTOR_A.timestamp - 301,
+      }),
+    ).rejects.toMatchObject({ code: 'WEBHOOK_TIMESTAMP_EXPIRED' });
+  });
+
+  it.each([
+    ['NaN', Number.NaN],
+    ['a negative value', -1],
+    ['a fraction', VECTOR_A.timestamp + 0.5],
+  ])('refuses `now` given as %s', async (_name, now) => {
+    await expect(
+      verifyStandardWebhooks({
+        secrets: VECTOR_A.secret,
+        headers: headersFor(VECTOR_A),
+        payload: VECTOR_A.payload,
+        now,
+      }),
+    ).rejects.toThrow('now must be a non-negative integer (unix seconds)');
+  });
+
   // Upstream parses with parseInt (JavaScript) and float (Python), so '123abc' and '1.5e9' both
   // reach the window check. Ours is the value that was signed or nothing.
   it.each([

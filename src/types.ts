@@ -39,6 +39,12 @@ export interface VerifyWebhookOptions {
   timestamp: number;
   nonce: string;
   tolerance?: number | undefined;
+  /**
+   * Unix seconds to measure the tolerance window from. Defaults to the system clock. Set it to
+   * replay a recorded request, or a test vector, against the time it was sent. Never derive it
+   * from the request or pin it in production; that removes the replay window.
+   */
+  now?: number | undefined;
   nonceValidator?: ((nonce: string) => Promise<boolean>) | undefined;
 }
 

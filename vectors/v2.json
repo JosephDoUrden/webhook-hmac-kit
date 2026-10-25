@@ -1,0 +1,280 @@
+{
+  "scheme": "webhook-hmac-kit-v2",
+  "version": 1,
+  "note": "Public test keys. Never use outside tests.",
+  "generated": "scripts/gen-vectors.mjs",
+  "tolerance": 300,
+  "cases": [
+    {
+      "name": "basic JSON",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_abc123",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJldmVudCI6InBheW1lbnQuY29tcGxldGVkIiwiYW1vdW50Ijo0OTk5fQ==",
+        "utf8": "{\"event\":\"payment.completed\",\"amount\":4999}"
+      },
+      "signature": "v2=e797b4fdd2f6b2f3055a9ecc45985389a3458f113e4da5c7242e2aec2d733887",
+      "direction": "sign+verify",
+      "now": 1700000000,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "empty payload",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_empty001",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "",
+        "utf8": ""
+      },
+      "signature": "v2=048213db0c13dc805ae0e9242ce377d23756eb5c6103f08c18e0b9301ff277fa",
+      "direction": "sign+verify",
+      "now": 1700000000,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "unicode payload",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_unicode01",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJuYW1lIjoiSMOpbGxvIFfDtnJsZCIsImVtb2ppIjoi8J+agCJ9",
+        "utf8": "{\"name\":\"Héllo Wörld\",\"emoji\":\"🚀\"}"
+      },
+      "signature": "v2=51bc5b40b150cfb802e6a1e806b69a1e6bbe1447d020aa2a0e9053d6bbc985d2",
+      "direction": "sign+verify",
+      "now": 1700000000,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "whitespace preserving",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_ws001",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyAgImtleSIgIDogICJ2YWx1ZSIgIH0=",
+        "utf8": "{  \"key\"  :  \"value\"  }"
+      },
+      "signature": "v2=4e4333f9ba5692cabb2478849835027c1d2fef8f333c10410955d81091c43449",
+      "direction": "sign+verify",
+      "now": 1700000000,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "colons in payload",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_colon001",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJ0aW1lIjoiMTI6MzA6NDUiLCJ1cmwiOiJodHRwczovL2V4YW1wbGUuY29tIn0=",
+        "utf8": "{\"time\":\"12:30:45\",\"url\":\"https://example.com\"}"
+      },
+      "signature": "v2=683d5312932959699ba9c7bc12ea8ac9bddb6ab2ed9c59364435aa2cef76c991",
+      "direction": "sign+verify",
+      "now": 1700000000,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "dots and digits in payload",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_dots001",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "MTcwMDAwMDAwMS5ub25jZV94LnsidiI6IjIuMC4xIn0=",
+        "utf8": "1700000001.nonce_x.{\"v\":\"2.0.1\"}"
+      },
+      "signature": "v2=c3d652678911bcd059a96e0bd3aa2bee700379649037718050486ad4896acd0b",
+      "direction": "sign+verify",
+      "now": 1700000000,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "byte payload that is not valid UTF-8",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_bytes001",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "e/99"
+      },
+      "signature": "v2=6bcc8aabb3021f06f7cb713985154d03ca3916082148444bd0cc75e3837cd430",
+      "direction": "verify-only",
+      "now": 1700000000,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "every byte 0-255 as the payload",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_allbytes",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/w=="
+      },
+      "signature": "v2=a8cfe6fffc82bfd418858ed0485990ea3529e0dea590e33a51ba16be4ada36e2",
+      "direction": "verify-only",
+      "now": 1700000000,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "two live secrets, the first one signs",
+      "conformance": "webhook-hmac-kit",
+      "secrets": [
+        "whsec_test_secret_key_1234567890",
+        "whsec_other_secret_key_0987654321"
+      ],
+      "nonce": "nonce_abc123",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJldmVudCI6InBheW1lbnQuY29tcGxldGVkIiwiYW1vdW50Ijo0OTk5fQ==",
+        "utf8": "{\"event\":\"payment.completed\",\"amount\":4999}"
+      },
+      "signature": "v2=e797b4fdd2f6b2f3055a9ecc45985389a3458f113e4da5c7242e2aec2d733887",
+      "direction": "sign+verify",
+      "now": 1700000000,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a digest in upper-case hex",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_abc123",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJldmVudCI6InBheW1lbnQuY29tcGxldGVkIiwiYW1vdW50Ijo0OTk5fQ==",
+        "utf8": "{\"event\":\"payment.completed\",\"amount\":4999}"
+      },
+      "signature": "v2=E797B4FDD2F6B2F3055A9ECC45985389A3458F113E4DA5C7242E2AEC2D733887",
+      "direction": "verify-only",
+      "now": 1700000000,
+      "expect": {
+        "error": "WEBHOOK_SIGNATURE_INVALID"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a digest that is not hex",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_abc123",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJldmVudCI6InBheW1lbnQuY29tcGxldGVkIiwiYW1vdW50Ijo0OTk5fQ==",
+        "utf8": "{\"event\":\"payment.completed\",\"amount\":4999}"
+      },
+      "signature": "v2=zzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzzz",
+      "direction": "verify-only",
+      "now": 1700000000,
+      "expect": {
+        "error": "WEBHOOK_SIGNATURE_INVALID"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a correct digest under an unsupported version",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_abc123",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJldmVudCI6InBheW1lbnQuY29tcGxldGVkIiwiYW1vdW50Ijo0OTk5fQ==",
+        "utf8": "{\"event\":\"payment.completed\",\"amount\":4999}"
+      },
+      "signature": "v1=e797b4fdd2f6b2f3055a9ecc45985389a3458f113e4da5c7242e2aec2d733887",
+      "direction": "verify-only",
+      "now": 1700000000,
+      "expect": {
+        "error": "WEBHOOK_SIGNATURE_INVALID"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a signature made with a different key",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_abc123",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJldmVudCI6InBheW1lbnQuY29tcGxldGVkIiwiYW1vdW50Ijo0OTk5fQ==",
+        "utf8": "{\"event\":\"payment.completed\",\"amount\":4999}"
+      },
+      "signature": "v2=2135fde53ca53788e41cbdcc9ff3e7201f8dd3eb27dffbcd5090177f7ec5a66c",
+      "direction": "verify-only",
+      "now": 1700000000,
+      "expect": {
+        "error": "WEBHOOK_SIGNATURE_INVALID"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a timestamp one second older than the tolerance allows",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_abc123",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJldmVudCI6InBheW1lbnQuY29tcGxldGVkIiwiYW1vdW50Ijo0OTk5fQ==",
+        "utf8": "{\"event\":\"payment.completed\",\"amount\":4999}"
+      },
+      "signature": "v2=e797b4fdd2f6b2f3055a9ecc45985389a3458f113e4da5c7242e2aec2d733887",
+      "direction": "verify-only",
+      "now": 1700000301,
+      "expect": {
+        "error": "WEBHOOK_TIMESTAMP_EXPIRED"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a timestamp one second further ahead than the tolerance allows",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce_abc123",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJldmVudCI6InBheW1lbnQuY29tcGxldGVkIiwiYW1vdW50Ijo0OTk5fQ==",
+        "utf8": "{\"event\":\"payment.completed\",\"amount\":4999}"
+      },
+      "signature": "v2=e797b4fdd2f6b2f3055a9ecc45985389a3458f113e4da5c7242e2aec2d733887",
+      "direction": "verify-only",
+      "now": 1699999699,
+      "expect": {
+        "error": "WEBHOOK_TIMESTAMP_EXPIRED"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a nonce holding a dot",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_test_secret_key_1234567890",
+      "nonce": "nonce.dot",
+      "timestamp": 1700000000,
+      "payload": {
+        "base64": "eyJldmVudCI6InBheW1lbnQuY29tcGxldGVkIiwiYW1vdW50Ijo0OTk5fQ==",
+        "utf8": "{\"event\":\"payment.completed\",\"amount\":4999}"
+      },
+      "signature": "v2=38a38a49bf5e770c105183afd1b338cc88d3f0d5421f531d97e6d81939341b59",
+      "direction": "verify-only",
+      "now": 1700000000,
+      "expect": {
+        "error": "WEBHOOK_NONCE_INVALID"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    }
+  ]
+}

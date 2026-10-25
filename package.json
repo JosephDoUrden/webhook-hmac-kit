@@ -46,10 +46,14 @@
         "types": "./dist/adapters/nest.d.cts",
         "default": "./dist/adapters/nest.cjs"
       }
-    }
+    },
+    "./vectors/*": "./vectors/*"
+  },
+  "bin": {
+    "webhook-hmac-kit": "dist/cli.js"
   },
   "sideEffects": false,
-  "files": ["dist"],
+  "files": ["dist", "vectors"],
   "engines": {
     "node": ">=22"
   },
