@@ -1,0 +1,359 @@
+{
+  "scheme": "standard-webhooks",
+  "version": 1,
+  "note": "Public test keys. Never use outside tests.",
+  "generated": "scripts/gen-vectors.mjs",
+  "tolerance": 300,
+  "cases": [
+    {
+      "name": "the six-language de-facto vector",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE="
+      },
+      "direction": "sign+verify",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "standard-webhooks/standard-webhooks@7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b:libraries/javascript/src/webhook.test.ts:206-211"
+    },
+    {
+      "name": "the Rust crate's vector",
+      "conformance": "spec",
+      "secret": "whsec_C2FVsBQIhrscChlQIMV+b5sSYspob7oD",
+      "messageId": "msg_27UH4WbU6Z5A5EzD8u03UvzRbpk",
+      "timestamp": 1649367553,
+      "payload": {
+        "base64": "eyJlbWFpbCI6InRlc3RAZXhhbXBsZS5jb20iLCJ1c2VybmFtZSI6InRlc3RfdXNlciJ9",
+        "utf8": "{\"email\":\"test@example.com\",\"username\":\"test_user\"}"
+      },
+      "headers": {
+        "webhook-id": "msg_27UH4WbU6Z5A5EzD8u03UvzRbpk",
+        "webhook-timestamp": "1649367553",
+        "webhook-signature": "v1,tZ1I4/hDygAJgO5TYxiSd6Sd0kDW6hPenDe+bTa3Kkw="
+      },
+      "direction": "sign+verify",
+      "now": 1649367553,
+      "expect": "valid",
+      "source": "standard-webhooks/standard-webhooks@7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b:libraries/rust/src/lib.rs:190-201"
+    },
+    {
+      "name": "a byte payload that is not UTF-8, signed over the bytes",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_bytes",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "e/99"
+      },
+      "headers": {
+        "webhook-id": "msg_bytes",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,D7UbbA/lAk3cw4K7TmhocB2OZAi90CxzMhI/e6oFmQc="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "every byte 0-255 as the payload",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "AAECAwQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8gISIjJCUmJygpKissLS4vMDEyMzQ1Njc4OTo7PD0+P0BBQkNERUZHSElKS0xNTk9QUVJTVFVWV1hZWltcXV5fYGFiY2RlZmdoaWprbG1ub3BxcnN0dXZ3eHl6e3x9fn+AgYKDhIWGh4iJiouMjY6PkJGSk5SVlpeYmZqbnJ2en6ChoqOkpaanqKmqq6ytrq+wsbKztLW2t7i5uru8vb6/wMHCw8TFxsfIycrLzM3Oz9DR0tPU1dbX2Nna29zd3t/g4eLj5OXm5+jp6uvs7e7v8PHy8/T19vf4+fr7/P3+/w=="
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,sEcZ042G8Crqgxbybb3y0eDxQR3TcfYsk11I1XULhSI="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "standard-webhooks/standard-webhooks#348 (known answer, recomputed here)"
+    },
+    {
+      "name": "a lone 0xff byte",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "/w=="
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,bgyaR5cdXxpdecz2baa2/+mIQjB0Kq6VL3Vw5qukAOg="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "U+FFFD, the text a lone 0xff decodes to, signing to something else",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "77+9",
+        "utf8": "�"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,xYy1Y71uvvm4pFaWlINq9h1RDIyWxPYrGtoxVTKpxes="
+      },
+      "direction": "sign+verify",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "two live secrets, one entry each, in the order given",
+      "conformance": "spec",
+      "secrets": [
+        "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+        "whsec_C2FVsBQIhrscChlQIMV+b5sSYspob7oD"
+      ],
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE= v1,78nXHjpFP0tVJQW5D0SBwmVyyW87BV/rL6MgfM/Bw44="
+      },
+      "direction": "sign+verify",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "an unknown v2 tag beside a valid entry is skipped",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v2,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "standard-webhooks/standard-webhooks@7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b:libraries/javascript/src/webhook.test.ts:184-190"
+    },
+    {
+      "name": "malformed entries beside a valid entry are skipped",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "garbage v1,not-base64! v1,AAAA v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a valid entry sixteenth in the list is found",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a valid entry seventeenth in the list is past the cap and not found",
+      "conformance": "webhook-hmac-kit",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc= v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": {
+        "error": "WEBHOOK_SIGNATURE_INVALID"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a timestamp one second older than the tolerance allows",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE="
+      },
+      "direction": "verify-only",
+      "now": 1614265631,
+      "expect": {
+        "error": "WEBHOOK_TIMESTAMP_EXPIRED"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a timestamp one second further ahead than the tolerance allows",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE="
+      },
+      "direction": "verify-only",
+      "now": 1614265029,
+      "expect": {
+        "error": "WEBHOOK_TIMESTAMP_EXPIRED"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a signature made with a different key",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg_p5jXN8AQM9LWM0D4loKWxJek",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": {
+        "error": "WEBHOOK_SIGNATURE_INVALID"
+      },
+      "source": "standard-webhooks/standard-webhooks@7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b:libraries/javascript/src/webhook.test.ts:184-190"
+    },
+    {
+      "name": "a message id holding dots is accepted on verify",
+      "conformance": "spec",
+      "secret": "whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw",
+      "messageId": "msg.with.dots",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "eyJ0ZXN0IjogMjQzMjIzMjMxNH0=",
+        "utf8": "{\"test\": 2432232314}"
+      },
+      "headers": {
+        "webhook-id": "msg.with.dots",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,3EynR8r81XExuWpB/QHsAAETyykY6G71pdXKqmT7BPQ="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "scripts/gen-vectors.mjs"
+    },
+    {
+      "name": "a 23-byte key is accepted on verify",
+      "conformance": "spec",
+      "secret": "MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaS",
+      "messageId": "msg_1",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "e30=",
+        "utf8": "{}"
+      },
+      "headers": {
+        "webhook-id": "msg_1",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,SoADEdRRWRZ60AdbTHDnDlkpalh1ZL+g5rFkCkPtlR8="
+      },
+      "direction": "verify-only",
+      "now": 1614265330,
+      "expect": "valid",
+      "source": "standard-webhooks/standard-webhooks@7537d2a2d3d52d8f2e0ecd12527af4a9307fd81b:libraries/python/tests/test_webhooks.py:190-195"
+    },
+    {
+      "name": "a 23-byte key is refused at sign time",
+      "conformance": "webhook-hmac-kit",
+      "secret": "MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaS",
+      "messageId": "msg_1",
+      "timestamp": 1614265330,
+      "payload": {
+        "base64": "e30=",
+        "utf8": "{}"
+      },
+      "headers": {
+        "webhook-id": "msg_1",
+        "webhook-timestamp": "1614265330",
+        "webhook-signature": "v1,SoADEdRRWRZ60AdbTHDnDlkpalh1ZL+g5rFkCkPtlR8="
+      },
+      "direction": "sign-only",
+      "now": 1614265330,
+      "expect": {
+        "reject": "sign"
+      },
+      "source": "scripts/gen-vectors.mjs"
+    }
+  ]
+}

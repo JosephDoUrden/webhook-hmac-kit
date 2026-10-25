@@ -85,7 +85,9 @@ Upper-case hex is rejected. A sender in another language must format the digest 
   the wire: no leading zeros, no `+`, no exponent form, no whitespace. The value that
   gets checked is the value the sender actually signed, not whatever `Number()` coerces.
 - **Tolerance** defaults to 300 seconds, checked as `|now - timestamp| <= tolerance`.
-  Pass `tolerance` to `verifyWebhook` to change it.
+  Pass `tolerance` to `verifyWebhook` to change it. `now` is the system clock unless you
+  pass `now` (Unix seconds), which both verifiers take. It is there for replaying a
+  recorded request or a test vector, not for production traffic.
 
 ## Rotation
 
@@ -364,9 +366,55 @@ don't put a 16-entry rotation list on a request path that isn't one.
 
 ## Test Vectors
 
-All vectors below use secret `whsec_test_secret_key_1234567890`, `SIGNATURE_VERSION`
-`v2` and timestamp `1700000000`. The full set, with the canonical string for each text
-payload, is in `test/vectors.ts`.
+The vectors ship with the package, as JSON, in `vectors/`:
+
+- `vectors/standard-webhooks.json`: Standard Webhooks. The two upstream reference
+  vectors, a body of every byte from 0 to 255 (the known answer from
+  standard-webhooks/standard-webhooks#348), a lone `0xff` byte and the U+FFFD it
+  decodes to (two different signatures, which is the point), rotation, skipped `v2,`
+  and malformed entries, the 16-entry cap, both sides of the tolerance window, a wrong
+  key, a dotted message id, and a 23-byte key that verifies but will not sign.
+- `vectors/v2.json`: this package's own scheme. The vectors in the table below plus an
+  all-bytes body, rotation, upper-case and non-hex digests, an unsupported version, a
+  wrong key, both sides of the window and a nonce with a dot in it.
+
+Public test keys. Never use outside tests. Each file says so in its `note` field.
+
+Each case has the secret, the message id or nonce, the timestamp, the payload as base64
+(and as text where it is UTF-8), the signature or headers, and the outcome: `"valid"`,
+`{ "error": "<code>" }` (verify must refuse), or `{ "reject": "sign" }` (the signer must
+refuse). Every case also carries `now`, the Unix time the verifier should assume, so a
+run gives the same answer whenever it happens. `direction` is `sign+verify` when a
+signer must reproduce the signature, `verify-only` when the case is for receivers, and
+`sign-only` for a case the signer must refuse; an `error` case is always `verify-only`.
+This library refuses to sign a body that is not well-formed UTF-8, so every such case
+is `verify-only`. `source` says where the value came from.
+
+`conformance` is `spec` when any conforming implementation should agree with the case,
+and `webhook-hmac-kit` when the case pins this library's own policy: the 16-entry cap,
+refusing a key under 24 bytes at sign time, and the whole `v2` scheme. If you are
+testing another implementation, treat every `error` case as "must reject" whatever
+your error is called (the codes are this library's names), and skip the
+`webhook-hmac-kit` cases if you like.
+
+`scripts/gen-vectors.mjs` writes both files with `node:crypto` and never imports this
+package, so no value in them is the library vouching for itself. Running it again gives
+the same bytes, and CI checks that it does. The files are also importable, as
+`webhook-hmac-kit/vectors/standard-webhooks.json` and `webhook-hmac-kit/vectors/v2.json`.
+
+The package also installs a CLI:
+
+```sh
+npx webhook-hmac-kit vectors                   # print both corpora
+npx webhook-hmac-kit vectors --scheme sw       # or one of them: sw, v2
+npx webhook-hmac-kit vectors --verify my.json  # run a corpus file through this library
+```
+
+`--verify` prints one line per case and exits 1 if any case fails. To check another
+implementation, load the JSON from that implementation's own tests.
+
+The `v2` vectors below use secret `whsec_test_secret_key_1234567890` and timestamp
+`1700000000`. The canonical string for each text payload is in `test/vectors.ts`.
 
 | Name | Nonce | Payload | Signature |
 |---|---|---|---|

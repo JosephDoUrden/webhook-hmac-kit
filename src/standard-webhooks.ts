@@ -38,7 +38,7 @@
  */
 
 import { bytesEqual, concat, fromBase64, toBase64, utf8 } from './bytes.js';
-import { isValidTimestamp } from './canonical.js';
+import { isValidTimestamp, resolveNow } from './canonical.js';
 import { blindMany, blindedFoldEqual, hmacSha256 } from './crypto.js';
 import { WebhookSignatureError, WebhookTimestampError } from './errors.js';
 import { MAX_SECRETS } from './secrets.js';
@@ -163,6 +163,12 @@ export interface VerifyStandardWebhooksOptions {
   payload: WebhookPayload;
   /** Seconds either side of now. Defaults to 300, which is what every reference library hard-codes. */
   tolerance?: number | undefined;
+  /**
+   * Unix seconds to measure the tolerance window from. Defaults to the system clock. Set it to
+   * replay a recorded request, or a test vector, against the time it was sent. Never derive it
+   * from the request or pin it in production; that removes the replay window.
+   */
+  now?: number | undefined;
 }
 
 /**
@@ -315,6 +321,7 @@ export async function verifyStandardWebhooks(
   if (!Number.isFinite(tolerance) || tolerance < 0) {
     throw new Error('tolerance must be a non-negative finite number');
   }
+  const nowSeconds = resolveNow(options.now);
 
   const headers = readHeaders(options.headers);
 
@@ -334,7 +341,7 @@ export async function verifyStandardWebhooks(
       'WEBHOOK_TIMESTAMP_INVALID',
     );
   }
-  if (Math.abs(Math.floor(Date.now() / 1000) - timestamp) > tolerance) {
+  if (Math.abs(nowSeconds - timestamp) > tolerance) {
     throw new WebhookTimestampError();
   }
 

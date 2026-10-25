@@ -13,6 +13,21 @@ export function isValidTimestamp(timestamp: number): boolean {
   return Number.isSafeInteger(timestamp) && timestamp >= 0;
 }
 
+/**
+ * The clock a verify measures its window from: the caller's `now` when there is one, otherwise the
+ * system clock. A bad `now` is the receiver misconfigured, not the request failing, so it is a
+ * plain Error like a bad tolerance and never a WebhookError.
+ */
+export function resolveNow(now: number | undefined): number {
+  if (now === undefined) {
+    return Math.floor(Date.now() / 1000);
+  }
+  if (!isValidTimestamp(now)) {
+    throw new Error('now must be a non-negative integer (unix seconds)');
+  }
+  return now;
+}
+
 export function isValidNonce(nonce: string): boolean {
   return typeof nonce === 'string' && NONCE_PATTERN.test(nonce);
 }

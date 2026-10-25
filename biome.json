@@ -23,5 +23,13 @@
   },
   "files": {
     "ignore": ["dist", "node_modules", "coverage"]
-  }
+  },
+  "overrides": [
+    {
+      "include": ["vectors/**"],
+      "formatter": {
+        "enabled": false
+      }
+    }
+  ]
 }

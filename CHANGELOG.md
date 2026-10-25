@@ -5,6 +5,26 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.2.0] - Unreleased
+
+### Added
+
+- `vectors/standard-webhooks.json` and `vectors/v2.json`, a test-vector corpus that
+  ships with the package and is exported as `webhook-hmac-kit/vectors/*`. Each case
+  carries its payload as base64, the clock to verify against, the expected outcome,
+  whether it is spec behaviour or this library's own policy (`conformance`), and where
+  its value came from. The Standard Webhooks
+  file includes the every-byte known answer from standard-webhooks/standard-webhooks#348,
+  which this library matches. Written by `scripts/gen-vectors.mjs` with `node:crypto`
+  alone, never by the package itself.
+- A `webhook-hmac-kit` CLI: `vectors` prints the corpus (`--scheme sw|v2` for one of
+  them), and `vectors --verify <file>` runs a corpus file through the library and exits
+  1 if any case fails. Node only, zero dependencies, and CI runs it over both files
+  against the built package.
+- `now` on the `verifyWebhook` and `verifyStandardWebhooks` options: Unix seconds to
+  measure the tolerance window from, defaulting to the system clock. A value that is
+  not a non-negative integer throws a plain `Error`, like a bad `tolerance`.
+
 ## [2.1.0] - 2026-09-05
 
 ### Added

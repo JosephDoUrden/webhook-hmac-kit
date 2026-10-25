@@ -1,4 +1,4 @@
-import { buildCanonicalBytes, isValidNonce, isValidTimestamp } from './canonical.js';
+import { buildCanonicalBytes, isValidNonce, isValidTimestamp, resolveNow } from './canonical.js';
 import { blindedEqual, hmacSha256 } from './crypto.js';
 import { WebhookNonceError, WebhookSignatureError, WebhookTimestampError } from './errors.js';
 import { normalizeSecrets } from './secrets.js';
@@ -14,6 +14,7 @@ export async function verifyWebhook(options: VerifyWebhookOptions): Promise<Veri
   if (!Number.isFinite(tolerance) || tolerance < 0) {
     throw new Error('tolerance must be a non-negative finite number');
   }
+  const nowSeconds = resolveNow(options.now);
 
   // 1. Timestamp check (cheapest — no crypto, no I/O)
   if (!isValidTimestamp(options.timestamp)) {
@@ -23,7 +24,6 @@ export async function verifyWebhook(options: VerifyWebhookOptions): Promise<Veri
     );
   }
 
-  const nowSeconds = Math.floor(Date.now() / 1000);
   if (Math.abs(nowSeconds - options.timestamp) > tolerance) {
     throw new WebhookTimestampError();
   }
