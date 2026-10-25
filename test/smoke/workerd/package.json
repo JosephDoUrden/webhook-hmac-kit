@@ -1,0 +1,12 @@
+{
+  "name": "webhook-hmac-kit-workerd-smoke",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "bundle": "esbuild worker.mjs --bundle --format=esm --target=esnext --log-level=warning --log-override:ignored-bare-import=silent --outfile=worker.bundle.mjs",
+    "test": "workerd test config.capnp"
+  },
+  "devDependencies": {
+    "workerd": "1.20261025.1"
+  }
+}

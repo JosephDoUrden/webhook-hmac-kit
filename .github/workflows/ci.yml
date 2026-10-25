@@ -66,8 +66,7 @@ jobs:
 
   # The Node matrix above cannot say anything about the runtimes this library was ported to Web
   # Crypto for. This job runs the built package on all three, through one plain script - vitest only
-  # runs on Node. @cloudflare/vitest-plugin (the successor to vitest-pool-workers) could cover
-  # workerd now that vitest is on 5; that is its own commit.
+  # runs on Node. workerd gets the same checks in the job below.
   edge-smoke:
     name: Smoke on Node, Deno and Bun
     runs-on: ubuntu-latest
@@ -97,19 +96,48 @@ jobs:
       - run: deno run test/smoke/smoke.mjs
       - run: bun test/smoke/smoke.mjs
 
+  # The smoke checks on workerd, the runtime under Cloudflare Workers, with nodejs_compat off so
+  # nothing from Node can paper over a gap. workerd is pinned in its own package under
+  # test/smoke/workerd so the root install does not pull a binary of well over 100 MB. The worker is bundled
+  # first because workerd needs every module named in its config and dist/ is split into chunks.
+  # `workerd test` calls the worker's test() export and exits non-zero if it throws.
+  workerd-smoke:
+    name: Smoke on workerd
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            test/smoke/workerd/package-lock.json
+
+      - run: npm ci
+      - run: npm run build
+      - run: npm clean-install --prefix test/smoke/workerd
+
+      - run: npm run --prefix test/smoke/workerd bundle
+      - run: npx --prefix test/smoke/workerd workerd test test/smoke/workerd/config.capnp
+
   # One stable check name for the branch ruleset to require. Matrix legs rename themselves when the
   # matrix changes and a skipped leg leaves a PR waiting forever, so the ruleset points at this job
   # only. It fails unless every job above succeeded.
   gate:
     name: gate
     if: always()
-    needs: [test, edge-smoke]
+    needs: [test, edge-smoke, workerd-smoke]
     runs-on: ubuntu-latest
     env:
       TEST: ${{ needs.test.result }}
       EDGE_SMOKE: ${{ needs.edge-smoke.result }}
+      WORKERD_SMOKE: ${{ needs.workerd-smoke.result }}
     steps:
       - run: |
-          echo "test=$TEST edge-smoke=$EDGE_SMOKE"
+          echo "test=$TEST edge-smoke=$EDGE_SMOKE workerd-smoke=$WORKERD_SMOKE"
           test "$TEST" = success
           test "$EDGE_SMOKE" = success
+          test "$WORKERD_SMOKE" = success
