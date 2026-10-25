@@ -53,10 +53,7 @@
     "webhook-hmac-kit": "dist/cli.js"
   },
   "sideEffects": false,
-  "files": [
-    "dist",
-    "vectors"
-  ],
+  "files": ["dist", "vectors"],
   "engines": {
     "node": ">=22"
   },
