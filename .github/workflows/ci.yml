@@ -40,6 +40,14 @@ jobs:
           test -f dist/index.d.ts
           test -f dist/index.d.cts
           test -f dist/cli.js
+          test -f dist/adapters/web.js
+          test -f dist/adapters/web.cjs
+          test -f dist/adapters/web.d.ts
+          test -f dist/adapters/web.d.cts
+          test -f dist/adapters/hono.js
+          test -f dist/adapters/hono.cjs
+          test -f dist/adapters/hono.d.ts
+          test -f dist/adapters/hono.d.cts
           # The CLI loads the library build beside it, not a copy bundled from src/. esbuild
           # heads every bundled module with a `// path` comment; a bare 'src/' match would trip
           # on the upstream file paths in the corpus's source fields.

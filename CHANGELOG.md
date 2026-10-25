@@ -5,6 +5,25 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [2.3.0] - Unreleased
+
+### Added
+
+- `webhook-hmac-kit/web`: `verifyStandardWebhooksRequest` and `verifyWebhookRequest`
+  verify a Web `Request` (Next.js route handlers, Hono, Workers, Deno, Bun). One function
+  per scheme, not a flag. Each reads the body once, as bytes, and resolves to
+  `{ ok: true, payload }` or `{ ok: false, status, error, response }`, where `response` is
+  a ready JSON `Response`. Statuses follow the other adapters: 401 for every failed
+  verification (a missing Standard Webhooks header included), 400 for a missing v2
+  header, 500 for a configuration error or a body something else has already read.
+  `error` is non-enumerable, so serialising the whole result does not leak it.
+- `webhook-hmac-kit/hono`: `standardWebhooksVerifier` and `webhookVerifier` middleware,
+  which put the verified bytes on `c.get('webhookPayload')`, and the `WebhookVariables`
+  type for `new Hono<{ Variables: WebhookVariables }>()`. Typed structurally; `hono` is
+  not a dependency.
+- Both Web functions and both Hono middlewares accept `now`, the testing aid added in
+  2.2.0.
+
 ## [2.2.0] - 2026-10-25
 
 ### Added

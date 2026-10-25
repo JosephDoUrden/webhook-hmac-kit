@@ -97,3 +97,20 @@ describe('public surface', () => {
     expect(api.buildCanonicalBytes(1000, 'n', 'x').constructor).toBe(Uint8Array);
   });
 });
+
+// One function per scheme in each adapter, and nothing else: no switch, and the internal core
+// they share stays internal. WebhookVariables is a type, so it is not a key.
+describe('adapter surfaces', () => {
+  it('exports exactly the two Web functions', async () => {
+    const web = await import('../src/adapters/web.js');
+    expect(Object.keys(web).sort()).toEqual([
+      'verifyStandardWebhooksRequest',
+      'verifyWebhookRequest',
+    ]);
+  });
+
+  it('exports exactly the two Hono middlewares', async () => {
+    const hono = await import('../src/adapters/hono.js');
+    expect(Object.keys(hono).sort()).toEqual(['standardWebhooksVerifier', 'webhookVerifier']);
+  });
+});

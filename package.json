@@ -1,7 +1,7 @@
 {
   "name": "webhook-hmac-kit",
   "version": "2.2.0",
-  "description": "Sign and verify webhooks with HMAC-SHA256 on Web Crypto. Timestamp checks, nonce replay protection, secret rotation, Express/Fastify/Nest adapters.",
+  "description": "Sign and verify webhooks with HMAC-SHA256 on Web Crypto. Timestamp checks, nonce replay protection, secret rotation, Web Request, Hono, Express, Fastify and Nest adapters.",
   "type": "module",
   "main": "./dist/index.cjs",
   "module": "./dist/index.js",
@@ -45,6 +45,26 @@
       "require": {
         "types": "./dist/adapters/nest.d.cts",
         "default": "./dist/adapters/nest.cjs"
+      }
+    },
+    "./web": {
+      "import": {
+        "types": "./dist/adapters/web.d.ts",
+        "default": "./dist/adapters/web.js"
+      },
+      "require": {
+        "types": "./dist/adapters/web.d.cts",
+        "default": "./dist/adapters/web.cjs"
+      }
+    },
+    "./hono": {
+      "import": {
+        "types": "./dist/adapters/hono.d.ts",
+        "default": "./dist/adapters/hono.js"
+      },
+      "require": {
+        "types": "./dist/adapters/hono.d.cts",
+        "default": "./dist/adapters/hono.cjs"
       }
     },
     "./vectors/*": "./vectors/*"

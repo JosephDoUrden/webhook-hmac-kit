@@ -16,6 +16,10 @@ export interface AdapterOptions {
    * Receives the underlying error (WebhookSignatureError, WebhookTimestampError, WebhookNonceError
    * or anything the nonce validator threw). This is the only place the failure reason is exposed;
    * the HTTP response is deliberately generic. Log it here.
+   *
+   * A nonce store that throws arrives wrapped in a WebhookNonceError, with what it threw as
+   * `cause`. That is the store's own error and may carry its own details, a connection string
+   * included, so log it with the care you would give the store's logs.
    */
   onError?: ((error: unknown) => void) | undefined;
 }
@@ -130,7 +134,7 @@ export function resolveRawBody(request: { rawBody?: unknown; body?: unknown }): 
  * a logger that is misconfigured must not cost the caller its response, leave the socket hanging,
  * or replace the 401 with whatever the logger threw.
  */
-export function reportError(options: AdapterOptions, error: unknown): void {
+export function reportError(options: Pick<AdapterOptions, 'onError'>, error: unknown): void {
   if (!options.onError) {
     return;
   }
@@ -147,7 +151,7 @@ export function reportError(options: AdapterOptions, error: unknown): void {
  * a later check failed, which confirms the secret is still live. The reason is available through
  * `onError`; it does not go on the wire.
  */
-export function mapErrorToStatus(error: unknown): number {
+export function mapErrorToStatus(error: unknown): 401 | 500 {
   if (error instanceof WebhookError) return 401;
   return 500;
 }

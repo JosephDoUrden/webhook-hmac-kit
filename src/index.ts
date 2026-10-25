@@ -22,7 +22,8 @@ export type { ParsedSignature } from './signature.js';
 // Standard Webhooks, as a scheme in its own right rather than a mode of this one. The adapters do
 // not gain a flag for it: one endpoint speaks one scheme, and a boolean that swapped which headers
 // they read would have given `secrets` two meanings - raw bytes here, base64 there - and silently
-// dropped the replay protection the Standard Webhooks scheme has no field for.
+// dropped the replay protection the Standard Webhooks scheme has no field for. The Web and Hono
+// adapters, which do speak both, follow the same rule: one function per scheme, never a switch.
 // buildStandardWebhooksBytes stays internal for the same reason buildCanonicalString does: it is
 // the shape of the signed value, useful for tests and for showing what was signed, and its output
 // is not something a caller should be handing to an HMAC themselves.

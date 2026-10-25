@@ -7,6 +7,8 @@ export default defineConfig([
       'src/adapters/express.ts',
       'src/adapters/fastify.ts',
       'src/adapters/nest.ts',
+      'src/adapters/web.ts',
+      'src/adapters/hono.ts',
     ],
     format: ['esm', 'cjs'],
     dts: true,
