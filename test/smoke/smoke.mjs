@@ -15,6 +15,7 @@
  */
 
 import assert from 'node:assert/strict';
+import { verifyStandardWebhooksRequest } from '../../dist/adapters/web.js';
 import {
   WebCryptoUnavailableError,
   WebhookError,
@@ -147,6 +148,36 @@ assert.ok(unavailable instanceof Error);
 assert.ok(!(unavailable instanceof WebhookError));
 assert.match(unavailable.message, /--no-experimental-global-webcrypto/);
 
+// The Web adapter, on each runtime's own Request and Response. The six-language Standard Webhooks
+// vector, verified against the time it was signed. The URL is absolute because Deno and Bun refuse
+// a relative one outside a server.
+const swRequest = (signature) =>
+  new Request('https://example.test/webhook', {
+    method: 'POST',
+    body: '{"test": 2432232314}',
+    headers: {
+      'webhook-id': 'msg_p5jXN8AQM9LWM0D4loKWxJek',
+      'webhook-timestamp': '1614265330',
+      'webhook-signature': signature,
+    },
+  });
+const swOptions = { secrets: 'whsec_MfKQ9r8GKYqrTwjUPD8ILPZIo2LaLaSw', now: 1614265330 };
+
+const accepted = await verifyStandardWebhooksRequest(
+  swRequest('v1,g0hM9SsE+OTPJTGt/tmIKtSyZlE3uFJELVlNIOLJ1OE='),
+  swOptions,
+);
+assert.equal(accepted.ok, true, 'web: valid Standard Webhooks request');
+assert.equal(new TextDecoder().decode(accepted.payload), '{"test": 2432232314}');
+
+const refused = await verifyStandardWebhooksRequest(
+  swRequest('v1,Ceo5qEr07ixe2NLpvHk3FH9bwy/WavXrAFQ/9tdO6mc='),
+  swOptions,
+);
+assert.equal(refused.ok, false, 'web: wrong-key signature');
+assert.equal(refused.response.status, 401);
+assert.deepEqual(await refused.response.json(), { error: 'Webhook verification failed' });
+
 const runtime =
   typeof Deno !== 'undefined'
     ? `Deno ${Deno.version.deno}`
@@ -154,4 +185,6 @@ const runtime =
       ? `Bun ${Bun.version}`
       : `Node ${globalThis.process.versions.node}`;
 
-console.log(`smoke ok on ${runtime}: ${vectors.length} vectors signed and verified`);
+console.log(
+  `smoke ok on ${runtime}: ${vectors.length} vectors signed and verified, Web adapter checked`,
+);

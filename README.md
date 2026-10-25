@@ -5,9 +5,10 @@
 
 Verify [Standard Webhooks](https://www.standardwebhooks.com) requests (`webhook-id`,
 `webhook-timestamp`, `webhook-signature`, `whsec_` secrets) over the raw bytes, with a
-timestamp tolerance window and key rotation, and no runtime dependencies. When you control
-both ends, it also signs and verifies in its own format, with nonce-based replay protection
-and adapters for Express, Fastify and NestJS.
+timestamp tolerance window and key rotation, and no runtime dependencies. A Web `Request`
+adapter and Hono middleware cover Next.js route handlers, Workers, Deno and Bun. When you
+control both ends, it also signs and verifies in its own format, with nonce-based replay
+protection and adapters for Express, Fastify and NestJS as well.
 
 Runs on Web Crypto only, so it works the same way on Node, Cloudflare Workers, Deno and
 Bun with no bundler configuration and no runtime branch.
@@ -50,11 +51,12 @@ secret as an array to rotate keys. `tolerance` changes the 300-second window. `n
 seconds) verifies a recorded request or a test vector against the time it was sent; it is
 a testing aid, never something to set in production.
 
-There is no Standard Webhooks adapter: the Express, Fastify and NestJS
-[adapters](#adapters) verify this library's own format only. Get the raw body from your
-framework (`express.raw()`, Fastify's `rawBody`, NestJS's `rawBody: true`) and call
-`verifyStandardWebhooks` from your handler as above. The same call works unchanged on
-Workers, Deno and Bun.
+If your handler receives a Web `Request` (Next.js App Router, Hono, Workers, Deno, Bun),
+`verifyStandardWebhooksRequest` from `webhook-hmac-kit/web` reads the body and does all of
+this for you; see [Adapters](#adapters). The Express, Fastify and NestJS adapters verify
+this library's own format only: there, get the raw body from your framework
+(`express.raw()`, Fastify's `rawBody`, NestJS's `rawBody: true`) and call
+`verifyStandardWebhooks` from your handler as above.
 
 ### Sending
 
@@ -268,9 +270,73 @@ cleanly on another.
 
 ### Adapters
 
-All three need the raw request body, same as the core functions. They verify the v2
-format only; for Standard Webhooks, call `verifyStandardWebhooks` from your handler as in
-the [Quick Start](#quick-start).
+Every adapter needs the raw request body, same as the core functions. The Web and Hono
+adapters read it themselves and verify either scheme, with one function per scheme rather
+than a flag. Express, Fastify and NestJS verify the v2 format only; for Standard Webhooks
+there, call `verifyStandardWebhooks` from your handler as in the
+[Quick Start](#quick-start).
+
+#### Web `Request`: Next.js, Workers, Deno, Bun
+
+```ts
+// app/api/webhook/route.ts (Next.js App Router)
+import { verifyStandardWebhooksRequest } from 'webhook-hmac-kit/web';
+
+export async function POST(request: Request) {
+  const result = await verifyStandardWebhooksRequest(request, {
+    secrets: process.env.WEBHOOK_SECRET!, // `!`: env values are string | undefined
+    onError: (err) => console.warn('webhook rejected', err),
+  });
+  if (!result.ok) return result.response;
+
+  const event = JSON.parse(new TextDecoder().decode(result.payload));
+  // ...
+  return new Response(null, { status: 204 });
+}
+```
+
+The body is read once, as bytes, and handed back as `result.payload`: parse that, not the
+request. If something has already read the body, the signed bytes are gone, and the result
+is a 500 whose `error` says to verify first or pass a `request.clone()` taken earlier.
+`result.response` is a ready JSON `Response`; `result.status` and `result.error` are there
+if you would rather build your own. Never put `result.error` in a response: serialised, it
+exposes its `code` and `name` and brings back the distinction the uniform 401 hides, so
+answer with `result.response` or a fixed body of your own (`error` is non-enumerable, so
+serialising the whole result leaves it out). `verifyWebhookRequest` does the same for the v2 format
+and takes the v2 options (`nonceValidator`, header names). Both take `now`, the testing aid
+from the [Quick Start](#receiving), and so do both Hono middlewares. Anything else that hands you a
+Web `Request` works the same way: a Workers `fetch` handler, `Deno.serve`, `Bun.serve`,
+SvelteKit, Remix.
+
+Statuses: 401 for every failed verification, including a missing Standard Webhooks header
+(as in the Quick Start); 400 for a missing v2 header, as in the other adapters; 500 for a
+configuration error. Fetch `Headers` fold a repeated header into one comma-joined value.
+For v2 that value fails closed as a 401. In a Standard Webhooks signature list, the last
+entry of every header value except the final one keeps the comma and is unreadable; the
+rest still parse.
+
+#### Hono
+
+```ts
+import { Hono } from 'hono';
+import { standardWebhooksVerifier, type WebhookVariables } from 'webhook-hmac-kit/hono';
+
+const app = new Hono<{ Variables: WebhookVariables }>();
+
+app.post(
+  '/webhook',
+  standardWebhooksVerifier({ secrets: process.env.WEBHOOK_SECRET! }),
+  (c) => {
+    const event = JSON.parse(new TextDecoder().decode(c.get('webhookPayload')));
+    // ...
+    return c.body(null, 204);
+  },
+);
+```
+
+`webhookVerifier` is the v2 equivalent. On failure the middleware answers with `c.json`
+and the route never runs; the statuses are the ones above. `hono` is not a dependency: the
+middleware is typed against the parts of the context it uses.
 
 #### Express
 
