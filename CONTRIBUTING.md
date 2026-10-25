@@ -52,7 +52,13 @@ The suite lives in `test/`. A few things worth knowing:
 
 - **Test vectors.** `test/vectors.ts` and `test/standard-webhooks-vectors.ts` hold known sign/verify pairs. If you touch the wire format or the canonical string, these are what catch you. Do not edit a vector to make a test pass unless the vector itself is wrong, and say so if it is.
 - **Property tests.** `test/canonical.property.test.ts` uses fast-check to throw generated input at the canonicalisation. Add property tests for anything with an invariant that should hold for all inputs, not just the cases you thought of.
-- **Smoke tests.** `test/smoke/` runs the built package on Node, Deno and Bun in CI. This library exists to behave the same on every Web Crypto runtime, so if your change is runtime-sensitive, check it holds on all three.
+- **Smoke tests.** `test/smoke/` runs the built package on Node, Deno, Bun and workerd (the runtime under Cloudflare Workers) in CI. The checks live in `test/smoke/smoke-core.mjs`; `smoke.mjs` runs them on the first three and `test/smoke/workerd/` on workerd, with `nodejs_compat` off. This library exists to behave the same on every Web Crypto runtime, so if your change is runtime-sensitive, check it holds on all four. To run the workerd one locally after `npm run build`:
+
+  ```sh
+  npm install --prefix test/smoke/workerd
+  npm run --prefix test/smoke/workerd bundle
+  npm test --prefix test/smoke/workerd
+  ```
 
 New behaviour needs a test. Bug fixes need a test that fails before the fix and passes after.
 
@@ -72,7 +78,7 @@ Commits and tags must be signed. Set up SSH or GPG signing and turn on `commit.g
 
 ## CI
 
-Every PR runs the `CI` workflow: typecheck, lint, test and build across the Node matrix, plus a smoke run on Node, Deno and Bun. The branch ruleset requires one check, `gate`, which only passes when every job above passed. If `gate` is red, the PR cannot merge, so check the failing job in the Actions tab.
+Every PR runs the `CI` workflow: typecheck, lint, test and build across the Node matrix, plus a smoke run on Node, Deno, Bun and workerd. The branch ruleset requires one check, `gate`, which only passes when every job above passed. If `gate` is red, the PR cannot merge, so check the failing job in the Actions tab.
 
 ## Code of Conduct
 

@@ -9,6 +9,17 @@ updates:
       prefix: "chore"
       include: "scope"
 
+  # workerd for the smoke run, kept out of the root package. The compatibilityDate in
+  # test/smoke/workerd/config.capnp keeps working on newer releases; move it forward by hand, never
+  # past the date the pinned release supports.
+  - package-ecosystem: "npm"
+    directory: "/test/smoke/workerd"
+    schedule:
+      interval: "weekly"
+    commit-message:
+      prefix: "chore"
+      include: "scope"
+
   - package-ecosystem: "github-actions"
     directory: "/"
     schedule:

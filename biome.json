@@ -22,7 +22,7 @@
     }
   },
   "files": {
-    "ignore": ["dist", "node_modules", "coverage"]
+    "ignore": ["dist", "node_modules", "coverage", "test/smoke/workerd/worker.bundle.mjs"]
   },
   "overrides": [
     {
