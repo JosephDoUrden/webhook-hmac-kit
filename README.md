@@ -250,13 +250,15 @@ collapsed before that cap is applied.
 ### Replay Protection
 
 ```ts
+const ttl = 2 * tolerance + 1; // 601 with the default tolerance of 300
+
 await verifyWebhook({
   ...rest,
+  tolerance,
   nonceValidator: async (nonce) => {
-    const key = `webhook:nonce:${nonce}`;
-    if (await redis.exists(key)) return false;
-    await redis.set(key, '1', 'EX', 300);
-    return true;
+    // SET ... NX writes only if the key is absent, in one step.
+    const result = await redis.set(`webhook:nonce:${nonce}`, '1', 'EX', ttl, 'NX');
+    return result === 'OK';
   },
 });
 ```
@@ -264,9 +266,39 @@ await verifyWebhook({
 This library does not store anything. It makes the nonce a safe cache key, dot-free,
 bounded length, and calls your `nonceValidator` after the signature has already
 checked out, never before. Replay protection is exactly as strong as the store behind
-that callback: its TTL needs to be at least your tolerance window, and it needs to be
-shared across every receiving instance, or a nonce accepted on one instance replays
-cleanly on another.
+that callback:
+
+- **It must be atomic.** Check-then-set (`exists`, then `set`) is a race: two copies
+  of one request can both see the key missing and both be accepted. Use a single
+  conditional write, like `SET ... NX` above.
+- **Its TTL must exceed 2 × tolerance.** The window is symmetric, so a request stamped
+  at `now + tolerance` stays verifiable for 2 × tolerance, and the verifier rounds
+  `now` down to whole seconds, so `2 × tolerance + 1` covers the last one. A nonce
+  that expires sooner can be replayed inside the window.
+- **It must be shared across every receiving instance**, or a nonce accepted on one
+  instance replays cleanly on another.
+
+A validator that throws or rejects is answered with a 401 (`WEBHOOK_NONCE_INVALID`,
+with the original error kept as `cause` for `onError`), never a 500, so a store outage
+fails closed and looks the same on the wire as a replay.
+
+Workers KV is not a replay store: it has no conditional write, it is eventually
+consistent, and its minimum TTL is 60 s. On Workers, use a Durable Object.
+
+For a single process, tests or local development only, an in-memory `Map` works:
+
+```ts
+// Single instance only: not shared, and lost on restart.
+const seen = new Map<string, number>();
+
+const nonceValidator = async (nonce: string): Promise<boolean> => {
+  const now = Date.now();
+  for (const [key, expiresAt] of seen) if (expiresAt <= now) seen.delete(key);
+  if (seen.has(nonce)) return false;
+  seen.set(nonce, now + (2 * tolerance + 1) * 1000);
+  return true;
+};
+```
 
 ### Adapters
 
@@ -437,8 +469,9 @@ with 500 instead of 401.
   payloads verify against one signature (fixed in 2.0.0, see the CHANGELOG).
 - **Replay protection is exactly as strong as the `nonceValidator` you supply.** This
   library never caches anything itself; it only makes the nonce a safe cache key.
-  A store with a TTL shorter than your tolerance window, one that fails open, or one
-  that isn't shared across instances gives you no replay protection at all.
+  A store that is not atomic, has a TTL of 2 × your tolerance or less (the window is
+  symmetric), fails open, or isn't shared across instances gives you no replay
+  protection at all.
 - **This is integrity and authenticity only.** There is no confidentiality (HTTPS is
   required and is not checked here), no protection once the shared secret leaks, and
   no payload size limit: enforce that at your HTTP layer. Every verification failure
