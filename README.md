@@ -17,6 +17,68 @@ Bun with no bundler configuration and no runtime branch.
 [CHANGELOG.md](CHANGELOG.md) before upgrading in place: a v1 signature is refused outright,
 with no dual-accept window.
 
+## How it compares
+
+Feature comparison with the JavaScript webhook verifiers you are most likely weighing
+this against. Every cell was read from the published source on 31 Oct 2026 at the version
+shown; the files are listed under the table.
+
+| | webhook-hmac-kit 2.3.0 | standardwebhooks 1.1.1 | svix 2.9.1 | stripe 23.1.0 (`webhooks.constructEvent`) | @octokit/webhooks-methods 6.0.0 |
+|---|---|---|---|---|---|
+| Body accepted by verify | string, `Uint8Array`; Web `Request` via `/web` [k1] | string, `Buffer`; any other `Uint8Array` throws [s1] | string, `Buffer` (delegates to standardwebhooks) [v1] | string, `Uint8Array` (`Buffer` included) [t1] | string only; anything else throws a `TypeError` [o1] |
+| Replay window | 300 s default, symmetric, `tolerance` option, nonce store for the own format [k2] | 300 s, fixed constant, both directions [s2] | inherited from standardwebhooks, 300 s fixed [v2] | 300 s default, `tolerance` argument, `0` disables; checks too-old only [t2] | none; no timestamp in the scheme [o2] |
+| Key rotation | `secrets` array, up to 16 [k3] | one secret per `Webhook` instance [s3] | one secret per instance [v3] | one secret per call; several `v1=` entries in the header are matched [t3] | `verifyWithFallback(secret, payload, sig, additionalSecrets[])` [o3] |
+| Runtime dependencies | 0 [k4] | 2: `@stablelib/base64`, `fast-sha256` [s4] | 1: `standardwebhooks` [v4] | 0 [t4] | 0 [o4] |
+| Web Crypto / edge | Web Crypto only; one build for Node, Workers, Deno, Bun [k5] | pure-JS HMAC (`fast-sha256`), no `crypto` import; single CommonJS entry [s5] | same as standardwebhooks [v5] | provider switch: `node:crypto` by default, `crypto.subtle` through the `worker`/`deno`/`bun`/`browser` exports with `constructEventAsync` [t5] | `node:crypto` build under the `node` and `default` conditions, `crypto.subtle` build under `browser` [o5] |
+
+A newer `standardwebhooks` is on its way: standard-webhooks/standard-webhooks#348
+(merged 29 Oct 2026, not yet published) makes verify accept any `Uint8Array`.
+
+<details>
+<summary>Sources, read 31 Oct 2026</summary>
+
+webhook-hmac-kit, this repository at 2.3.0:
+
+- k1: `src/types.ts:16` (`WebhookPayload = string | Uint8Array`), `src/standard-webhooks.ts:436-443`, `src/adapters/web.ts:48`.
+- k2: `src/types.ts:1` (`DEFAULT_TOLERANCE_SECONDS = 300`), `src/standard-webhooks.ts:320-322`; [Replay Protection](#replay-protection).
+- k3: `src/standard-webhooks.ts:145` (`secrets: ... | ...[]`), `src/secrets.ts:21` (`MAX_SECRETS = 16`).
+- k4: `package.json`, no `dependencies` field.
+- k5: `src/crypto.ts`, `crypto.subtle` only; [Runtime Support](#runtime-support).
+
+standardwebhooks 1.1.1, npm tarball `dist/index.js` and `libraries/javascript/src/index.ts` at commit `a7d19b4574` (the 1.1.1 bump; the release has no tag):
+
+- s1: `src/index.ts:71-72` (`payload: string | Buffer`), `:121-127` (`constructor.name === "Buffer"` guard, otherwise `throw new Error("Expected payload to be of type string or Buffer.")`).
+- s2: `src/index.ts:5` (`WEBHOOK_TOLERANCE_IN_SECONDS = 5 * 60`), `:136-150` (`verifyTimestamp`, too old and too new).
+- s3: `src/index.ts:41-43` (single `key`), `:93-105`.
+- s4: tarball `package.json`, `dependencies`.
+- s5: `src/index.ts:2,132` (`sha256.hmac` from `fast-sha256`), `src/timing_safe_equal.ts:13-35`; `package.json` has `main` only, no `exports` conditions.
+
+svix 2.9.1, tag `v2.9.1`, `javascript/src/webhook.ts`:
+
+- v1: `webhook.ts:27-28` (`payload: string | Buffer`), `:45` (`this.inner.verify(payload, headers, { jsonParse: false })`).
+- v2: no tolerance option passed through; see s2.
+- v3: `webhook.ts:23-24` (`new StdWh(secret, options)`).
+- v4: `javascript/package.json:37-39`, also the tarball `package.json`.
+- v5: `dist/index.mjs:1` imports only `standardwebhooks`; `exports` is a single ESM entry.
+
+stripe 23.1.0, tag `v23.1.0`:
+
+- t1: `src/Webhooks.ts:44` (`WebhookPayload = string | Uint8Array`), `:144-151`, `:361-379`.
+- t2: `src/Webhooks.ts:142` (`DEFAULT_TOLERANCE: 300`), `:429-430` (JSDoc: `0` skips the check), `:494-503` (`timestampAge > tolerance`).
+- t3: `src/Webhooks.ts:147` (`secret: string`), `:458-460` (filter over `details.signatures`), `:517-535`.
+- t4: tarball `package.json`, `"dependencies": {}`.
+- t5: `src/crypto/NodeCryptoProvider.ts:1,10-13`, `src/crypto/SubtleCryptoProvider.ts:20,37-52`, `src/platform/WebPlatformFunctions.ts:41-49`, `src/stripe.esm.worker.ts:1-6`; `package.json` `exports` conditions `browser`, `bun`, `deno`, `worker`, `workerd`.
+
+@octokit/webhooks-methods 6.0.0, tag `v6.0.0`:
+
+- o1: `src/node/verify.ts:7-22` (`eventPayload: string`, `typeof eventPayload !== "string"` throws), `src/web.ts:62-72`.
+- o2: no timestamp handling anywhere in `src/`.
+- o3: `src/index.ts:5-24` (`verifyWithFallback`), `src/web.ts:82-87`.
+- o4: tarball `package.json`, no `dependencies` key.
+- o5: `src/node/sign.ts:1`, `src/node/verify.ts:1-2` (`node:crypto`), `src/web.ts:23-33,75-80` (`crypto.subtle`); `package.json:36-51` `exports`: `node`, `browser`, `default`.
+
+</details>
+
 ## Install
 
 ```bash
