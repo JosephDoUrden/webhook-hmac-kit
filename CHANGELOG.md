@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- README: a "How it compares" table against `standardwebhooks`, `svix`, `stripe` and
+  `@octokit/webhooks-methods` (body input types, replay window, key rotation, runtime
+  dependencies, Web Crypto and edge support), every cell read from the published source
+  on 31 Oct 2026 with the file and line listed.
+
 ### Fixed
 
 - README: the replay store's TTL must exceed 2 × tolerance (2 × tolerance + 1 seconds),
