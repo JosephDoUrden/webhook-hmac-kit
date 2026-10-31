@@ -14,11 +14,11 @@ import { readFileSync, realpathSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import {
-  WebhookError,
   signStandardWebhooks,
   signWebhook,
   verifyStandardWebhooks,
   verifyWebhook,
+  WebhookError,
 } from '../src/index.js';
 import standardWebhooksCorpus from '../vectors/standard-webhooks.json';
 import v2Corpus from '../vectors/v2.json';

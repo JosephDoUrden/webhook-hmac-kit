@@ -1,16 +1,16 @@
 import type { RequestCheck, RequestFailureStatus } from './request.js';
 import {
-  type VerifyStandardWebhooksRequestOptions,
-  type VerifyWebhookRequestOptions,
   checkStandardWebhooksRequest,
   checkWebhookRequest,
+  type VerifyStandardWebhooksRequestOptions,
+  type VerifyWebhookRequestOptions,
 } from './request.js';
 
-export type { AdapterOptions } from './shared.js';
 export type {
   VerifyStandardWebhooksRequestOptions,
   VerifyWebhookRequestOptions,
 } from './request.js';
+export type { AdapterOptions } from './shared.js';
 
 /**
  * What the middleware puts on the context. Pass it to `new Hono<{ Variables: WebhookVariables }>()`

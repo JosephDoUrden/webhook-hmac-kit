@@ -1,11 +1,11 @@
 import { describe, expect, it } from 'vitest';
 import { bytesEqual, concat, utf8 } from '../src/bytes.js';
 import {
-  NONCE_PATTERN,
   buildCanonicalBytes,
   buildCanonicalString,
   isValidNonce,
   isValidTimestamp,
+  NONCE_PATTERN,
 } from '../src/canonical.js';
 import { vectors } from './vectors.js';
 

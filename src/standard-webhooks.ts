@@ -39,11 +39,11 @@
 
 import { bytesEqual, concat, fromBase64, toBase64, utf8 } from './bytes.js';
 import { isValidTimestamp, resolveNow } from './canonical.js';
-import { blindMany, blindedFoldEqual, hmacSha256 } from './crypto.js';
+import { blindedFoldEqual, blindMany, hmacSha256 } from './crypto.js';
 import { WebhookSignatureError, WebhookTimestampError } from './errors.js';
 import { MAX_SECRETS } from './secrets.js';
-import { DEFAULT_TOLERANCE_SECONDS } from './types.js';
 import type { VerifyWebhookResult, WebhookPayload } from './types.js';
+import { DEFAULT_TOLERANCE_SECONDS } from './types.js';
 
 const ID_HEADER = 'webhook-id';
 const TIMESTAMP_HEADER = 'webhook-timestamp';

@@ -6,8 +6,8 @@ import { getSubtle } from '../src/crypto.js';
 import { WebhookError, WebhookSignatureError, WebhookTimestampError } from '../src/errors.js';
 import { signWebhook } from '../src/signer.js';
 import {
-  MAX_SIGNATURE_ENTRIES,
   buildStandardWebhooksBytes,
+  MAX_SIGNATURE_ENTRIES,
   parseStandardWebhooksSecret,
   signStandardWebhooks,
   verifyStandardWebhooks,

@@ -73,7 +73,10 @@
     "webhook-hmac-kit": "dist/cli.js"
   },
   "sideEffects": false,
-  "files": ["dist", "vectors"],
+  "files": [
+    "dist",
+    "vectors"
+  ],
   "engines": {
     "node": ">=22"
   },
@@ -109,7 +112,7 @@
     "url": "https://github.com/JosephDoUrden/webhook-hmac-kit/issues"
   },
   "devDependencies": {
-    "@biomejs/biome": "^1.9.0",
+    "@biomejs/biome": "^2.6.2",
     "@types/node": "^22",
     "@vitest/coverage-v8": "^5.0.5",
     "fast-check": "4.10.2",
