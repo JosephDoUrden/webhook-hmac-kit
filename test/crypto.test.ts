@@ -1,13 +1,13 @@
-import { readFileSync, readdirSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { toHex, utf8 } from '../src/bytes.js';
 import { buildCanonicalBytes } from '../src/canonical.js';
 import {
-  blindMany,
   blindedEqual,
   blindedFoldEqual,
+  blindMany,
   getSubtle,
   hmacSha256,
   importHmacKey,

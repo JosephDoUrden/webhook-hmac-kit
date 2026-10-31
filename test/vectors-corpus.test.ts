@@ -2,11 +2,11 @@ import { readFileSync } from 'node:fs';
 import { afterAll, describe, expect, it } from 'vitest';
 import { fromBase64 } from '../src/bytes.js';
 import {
-  WebhookError,
   signStandardWebhooks,
   signWebhook,
   verifyStandardWebhooks,
   verifyWebhook,
+  WebhookError,
 } from '../src/index.js';
 
 /**

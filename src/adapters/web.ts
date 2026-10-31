@@ -1,17 +1,17 @@
 import type { RequestCheck, RequestFailureStatus } from './request.js';
 import {
-  type VerifyStandardWebhooksRequestOptions,
-  type VerifyWebhookRequestOptions,
   checkStandardWebhooksRequest,
   checkWebhookRequest,
+  type VerifyStandardWebhooksRequestOptions,
+  type VerifyWebhookRequestOptions,
 } from './request.js';
 
-export type { AdapterOptions } from './shared.js';
 export type {
   RequestFailureStatus,
   VerifyStandardWebhooksRequestOptions,
   VerifyWebhookRequestOptions,
 } from './request.js';
+export type { AdapterOptions } from './shared.js';
 
 /**
  * `ok: false` carries a ready `Response` with the generic JSON body, so a handler can return it as

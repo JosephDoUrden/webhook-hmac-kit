@@ -1,6 +1,6 @@
 import { concat, utf8 } from './bytes.js';
-import { SIGNATURE_VERSION } from './types.js';
 import type { WebhookPayload } from './types.js';
+import { SIGNATURE_VERSION } from './types.js';
 
 /**
  * Grammar for the nonce field. Dot-free by design: the dot is the canonical-string delimiter, so a

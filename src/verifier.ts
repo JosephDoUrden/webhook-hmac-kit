@@ -3,8 +3,8 @@ import { blindedEqual, hmacSha256 } from './crypto.js';
 import { WebhookNonceError, WebhookSignatureError, WebhookTimestampError } from './errors.js';
 import { normalizeSecrets } from './secrets.js';
 import { parseSignature } from './signature.js';
-import { DEFAULT_TOLERANCE_SECONDS, SIGNATURE_VERSION } from './types.js';
 import type { VerifyWebhookOptions, VerifyWebhookResult } from './types.js';
+import { DEFAULT_TOLERANCE_SECONDS, SIGNATURE_VERSION } from './types.js';
 
 export async function verifyWebhook(options: VerifyWebhookOptions): Promise<VerifyWebhookResult> {
   const secrets = normalizeSecrets(options.secrets);

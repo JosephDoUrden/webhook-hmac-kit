@@ -1,7 +1,7 @@
 import fc from 'fast-check';
 import { describe, expect, it } from 'vitest';
 import { bytesEqual, utf8 } from '../src/bytes.js';
-import { NONCE_PATTERN, buildCanonicalBytes, buildCanonicalString } from '../src/canonical.js';
+import { buildCanonicalBytes, buildCanonicalString, NONCE_PATTERN } from '../src/canonical.js';
 import { WebhookNonceError } from '../src/errors.js';
 import { signWebhook } from '../src/signer.js';
 import { verifyWebhook } from '../src/verifier.js';

@@ -16,10 +16,10 @@
 
 import { verifyStandardWebhooksRequest } from '../../../dist/adapters/web.js';
 import {
-  WebCryptoUnavailableError,
-  WebhookError,
   signWebhook,
   verifyWebhook,
+  WebCryptoUnavailableError,
+  WebhookError,
 } from '../../../dist/index.js';
 import { runSmoke } from '../smoke-core.mjs';
 
