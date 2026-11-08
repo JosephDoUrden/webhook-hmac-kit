@@ -8,6 +8,6 @@
   },
   "devDependencies": {
     "esbuild": "0.28.2",
-    "workerd": "1.20261029.1"
+    "workerd": "1.20261104.1"
   }
 }
