@@ -8,6 +8,11 @@ updates:
     commit-message:
       prefix: "chore"
       include: "scope"
+    # @types/node follows the engines floor (Node.js 22). A newer major would type APIs that
+    # Node.js 22 does not have. Move it by hand when the floor moves.
+    ignore:
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
 
   # workerd for the smoke run, kept out of the root package. The compatibilityDate in
   # test/smoke/workerd/config.capnp keeps working on newer releases; move it forward by hand, never
