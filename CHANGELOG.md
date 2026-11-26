@@ -25,6 +25,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README: the Replay Protection recipe now uses an atomic Redis `SET ... NX` in place
   of the racy check-then-set, says a throwing validator fails closed with a 401, says
   why Workers KV is not a replay store, and adds a single-instance in-memory example.
+- README: the first screen now says what the package does, then the install line and an
+  11-line Standard Webhooks receiver for a Web `Request`, then "Why this exists". The
+  2.0.0 notice and the comparison table follow it.
 
 ## [2.3.0] - 2026-10-25
 

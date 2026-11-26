@@ -1,17 +1,39 @@
 # webhook-hmac-kit
 
+Verifies and signs [Standard Webhooks](https://www.standardwebhooks.com) requests
+(HMAC-SHA256, `whsec_` secrets) for anyone receiving or sending webhooks on Node,
+Cloudflare Workers, Deno or Bun.
+
 [![npm version](https://img.shields.io/npm/v/webhook-hmac-kit)](https://www.npmjs.com/package/webhook-hmac-kit)
 [![license](https://img.shields.io/npm/l/webhook-hmac-kit)](https://github.com/JosephDoUrden/webhook-hmac-kit/blob/main/LICENSE)
 
-Verify [Standard Webhooks](https://www.standardwebhooks.com) requests (`webhook-id`,
-`webhook-timestamp`, `webhook-signature`, `whsec_` secrets) over the raw bytes, with a
-timestamp tolerance window and key rotation, and no runtime dependencies. A Web `Request`
-adapter and Hono middleware cover Next.js route handlers, Workers, Deno and Bun. When you
-control both ends, it also signs and verifies in its own format, with nonce-based replay
-protection and adapters for Express, Fastify and NestJS as well.
+```bash
+npm install webhook-hmac-kit
+```
 
-Runs on Web Crypto only, so it works the same way on Node, Cloudflare Workers, Deno and
-Bun with no bundler configuration and no runtime branch.
+```ts
+// app/api/webhook/route.ts (Next.js). Workers, Deno and Bun hand you the same Request.
+import { verifyStandardWebhooksRequest } from 'webhook-hmac-kit/web';
+
+export async function POST(request: Request) {
+  const result = await verifyStandardWebhooksRequest(request, {
+    secrets: process.env.WEBHOOK_SECRET!, // the whsec_ secret your sender gave you
+  });
+  if (!result.ok) return result.response; // 401 if it fails to verify, 500 if misconfigured
+  const event = JSON.parse(new TextDecoder().decode(result.payload)); // verify first, parse second
+  return new Response(null, { status: 204 });
+}
+```
+
+## Why this exists
+
+A webhook signature covers the exact bytes on the wire, so this library verifies the raw
+body, as a `Uint8Array` or a string, and never parses it. It checks a 300-second timestamp
+window by default, takes a list of up to 16 live secrets for key rotation, and has no
+runtime dependencies. It uses Web Crypto only, so the same code runs on Node 22 and later,
+Cloudflare Workers, Deno and Bun. When you control both ends, it also has its own format
+with nonce-based replay protection and adapters for Hono, Express, Fastify and NestJS.
+Hono also has Standard Webhooks middleware.
 
 **2.0.0 is a breaking release.** The library's [own wire format](#own-format-v2) changed. See
 [CHANGELOG.md](CHANGELOG.md) before upgrading in place: a v1 signature is refused outright,
@@ -78,12 +100,6 @@ stripe 23.1.0, tag `v23.1.0`:
 - o5: `src/node/sign.ts:1`, `src/node/verify.ts:1-2` (`node:crypto`), `src/web.ts:23-33,75-80` (`crypto.subtle`); `package.json:36-51` `exports`: `node`, `browser`, `default`.
 
 </details>
-
-## Install
-
-```bash
-npm install webhook-hmac-kit
-```
 
 ## Quick Start
 
