@@ -42,22 +42,26 @@ with no dual-accept window.
 ## How it compares
 
 Feature comparison with the JavaScript webhook verifiers you are most likely weighing
-this against. Every cell was read from the published source on 31 Oct 2026 at the version
-shown; the files are listed under the table.
+this against. Every cell was read from the published source at the version shown, on
+31 Oct 2026 and again on 26 Nov 2026 for the newer standardwebhooks, svix and stripe
+releases; the files are listed under the table.
 
-| | webhook-hmac-kit 2.3.0 | standardwebhooks 1.1.1 | svix 2.9.1 | stripe 23.1.0 (`webhooks.constructEvent`) | @octokit/webhooks-methods 6.0.0 |
+| | webhook-hmac-kit 2.3.0 | standardwebhooks 1.3.0 | svix 2.11.1 | stripe 23.2.0 (`webhooks.constructEvent`) | @octokit/webhooks-methods 6.0.0 |
 |---|---|---|---|---|---|
-| Body accepted by verify | string, `Uint8Array`; Web `Request` via `/web` [k1] | string, `Buffer`; any other `Uint8Array` throws [s1] | string, `Buffer` (delegates to standardwebhooks) [v1] | string, `Uint8Array` (`Buffer` included) [t1] | string only; anything else throws a `TypeError` [o1] |
+| Body accepted by verify | string, `Uint8Array`; Web `Request` via `/web` [k1] | string, `Uint8Array` or any other one-byte typed array, `Buffer` included; wider typed arrays throw [s1] | string, `Buffer` in its own types; it hands the body to standardwebhooks, so with 1.3.0 installed a `Uint8Array` verifies too [v1] | string, `Uint8Array` (`Buffer` included) [t1] | string only; anything else throws a `TypeError` [o1] |
 | Replay window | 300 s default, symmetric, `tolerance` option, nonce store for the own format [k2] | 300 s, fixed constant, both directions [s2] | inherited from standardwebhooks, 300 s fixed [v2] | 300 s default, `tolerance` argument, `0` disables; checks too-old only [t2] | none; no timestamp in the scheme [o2] |
 | Key rotation | `secrets` array, up to 16 [k3] | one secret per `Webhook` instance [s3] | one secret per instance [v3] | one secret per call; several `v1=` entries in the header are matched [t3] | `verifyWithFallback(secret, payload, sig, additionalSecrets[])` [o3] |
 | Runtime dependencies | 0 [k4] | 2: `@stablelib/base64`, `fast-sha256` [s4] | 1: `standardwebhooks` [v4] | 0 [t4] | 0 [o4] |
 | Web Crypto / edge | Web Crypto only; one build for Node, Workers, Deno, Bun [k5] | pure-JS HMAC (`fast-sha256`), no `crypto` import; single CommonJS entry [s5] | same as standardwebhooks [v5] | provider switch: `node:crypto` by default, `crypto.subtle` through the `worker`/`deno`/`bun`/`browser` exports with `constructEventAsync` [t5] | `node:crypto` build under the `node` and `default` conditions, `crypto.subtle` build under `browser` [o5] |
 
-A newer `standardwebhooks` is on its way: standard-webhooks/standard-webhooks#348
-(merged 29 Oct 2026, not yet published) makes verify accept any `Uint8Array`.
+standard-webhooks/standard-webhooks#348 (merged 29 Oct 2026) shipped in standardwebhooks
+1.3.0 on 17 Nov 2026. Verify now accepts any `Uint8Array`, so the body-type difference in
+the first row no longer exists against standardwebhooks. svix still declares
+`string | Buffer`, and accepts a `Uint8Array` only because of the standardwebhooks version
+underneath it.
 
 <details>
-<summary>Sources, read 31 Oct 2026</summary>
+<summary>Sources, read 31 Oct 2026, re-checked 26 Nov 2026</summary>
 
 webhook-hmac-kit, this repository at 2.3.0:
 
@@ -67,31 +71,31 @@ webhook-hmac-kit, this repository at 2.3.0:
 - k4: `package.json`, no `dependencies` field.
 - k5: `src/crypto.ts`, `crypto.subtle` only; [Runtime Support](#runtime-support).
 
-standardwebhooks 1.1.1, npm tarball `dist/index.js` and `libraries/javascript/src/index.ts` at commit `a7d19b4574` (the 1.1.1 bump; the release has no tag):
+standardwebhooks 1.3.0, npm tarball `dist/index.js` and `libraries/javascript/src/index.ts` at tag `v1.3.0` (commit `daee8284cf`), read 26 Nov 2026:
 
-- s1: `src/index.ts:71-72` (`payload: string | Buffer`), `:121-127` (`constructor.name === "Buffer"` guard, otherwise `throw new Error("Expected payload to be of type string or Buffer.")`).
-- s2: `src/index.ts:5` (`WEBHOOK_TOLERANCE_IN_SECONDS = 5 * 60`), `:136-150` (`verifyTimestamp`, too old and too new).
-- s3: `src/index.ts:41-43` (single `key`), `:93-105`.
+- s1: `src/index.ts:40-52` (`payloadBytes`: a string, or `ArrayBuffer.isView(payload) && payload.BYTES_PER_ELEMENT === 1`, otherwise `throw new Error("Expected payload to be of type string, Buffer or Uint8Array.")`). Run against the tarball: a plain `Uint8Array` and an `Int8Array` verify, a `Uint16Array` throws.
+- s2: `src/index.ts:5` (`WEBHOOK_TOLERANCE_IN_SECONDS = 5 * 60`), `:186-200` (`verifyTimestamp`, too old and too new). Run: 301 s old and 301 s ahead both throw.
+- s3: `src/index.ts:56-77` (single `key`; an array of secrets throws `Expected secret to be of type string`).
 - s4: tarball `package.json`, `dependencies`.
-- s5: `src/index.ts:2,132` (`sha256.hmac` from `fast-sha256`), `src/timing_safe_equal.ts:13-35`; `package.json` has `main` only, no `exports` conditions.
+- s5: `src/index.ts:2,148` (`sha256.hmac` from `fast-sha256`), `src/timing_safe_equal.ts:13-35`; `package.json` has `main` only, no `exports` conditions.
 
-svix 2.9.1, tag `v2.9.1`, `javascript/src/webhook.ts`:
+svix 2.11.1, npm tarball `src/webhook.ts`, read 26 Nov 2026:
 
-- v1: `webhook.ts:27-28` (`payload: string | Buffer`), `:45` (`this.inner.verify(payload, headers, { jsonParse: false })`).
+- v1: `webhook.ts:27-28` (`payload: string | Buffer`), `:45` (`this.inner.verify(payload, headers, { jsonParse: false })`). Run with standardwebhooks 1.3.0 resolved: a plain `Uint8Array` verifies.
 - v2: no tolerance option passed through; see s2.
 - v3: `webhook.ts:23-24` (`new StdWh(secret, options)`).
-- v4: `javascript/package.json:37-39`, also the tarball `package.json`.
+- v4: tarball `package.json`, `"standardwebhooks": "^1.1.1"`.
 - v5: `dist/index.mjs:1` imports only `standardwebhooks`; `exports` is a single ESM entry.
 
-stripe 23.1.0, tag `v23.1.0`:
+stripe 23.2.0, tag `v23.2.0`, read 26 Nov 2026 (23.2.0 changed the error messages, not these behaviours):
 
-- t1: `src/Webhooks.ts:44` (`WebhookPayload = string | Uint8Array`), `:144-151`, `:361-379`.
-- t2: `src/Webhooks.ts:142` (`DEFAULT_TOLERANCE: 300`), `:429-430` (JSDoc: `0` skips the check), `:494-503` (`timestampAge > tolerance`).
-- t3: `src/Webhooks.ts:147` (`secret: string`), `:458-460` (filter over `details.signatures`), `:517-535`.
+- t1: `src/Webhooks.ts:54` (`WebhookPayload = string | Uint8Array`), `:154-161`, `:384-402`. Run: a `Uint8Array` body verifies.
+- t2: `src/Webhooks.ts:152` (`DEFAULT_TOLERANCE: 300`), `:452-453` (JSDoc: `0` skips the check), `:481-488` (`timestampAge > tolerance`). Run: 301 s old throws, 3600 s ahead verifies, `tolerance` `0` accepts an old stamp.
+- t3: `src/Webhooks.ts:157` (`secret: string`), `:473-475` (filter over `details.signatures`), `:695-713`.
 - t4: tarball `package.json`, `"dependencies": {}`.
 - t5: `src/crypto/NodeCryptoProvider.ts:1,10-13`, `src/crypto/SubtleCryptoProvider.ts:20,37-52`, `src/platform/WebPlatformFunctions.ts:41-49`, `src/stripe.esm.worker.ts:1-6`; `package.json` `exports` conditions `browser`, `bun`, `deno`, `worker`, `workerd`.
 
-@octokit/webhooks-methods 6.0.0, tag `v6.0.0`:
+@octokit/webhooks-methods 6.0.0, tag `v6.0.0` (still the latest on 26 Nov 2026; run: a `Uint8Array` payload throws `eventPayload must be a string`):
 
 - o1: `src/node/verify.ts:7-22` (`eventPayload: string`, `typeof eventPayload !== "string"` throws), `src/web.ts:62-72`.
 - o2: no timestamp handling anywhere in `src/`.
@@ -206,13 +210,17 @@ secret. A conforming sender emits one entry per live key, so nothing legitimate 
 
 Each asymmetry is the lenient side facing the network. No reference library enforces
 the key range, and upstream's own Python suite signs with a 23-byte key, so refusing a
-short key on receive would break a live integration to make a point. Four reference
-libraries disagree about a body that is not well-formed UTF-8 — Go signs the bytes,
-Rust refuses the message, JavaScript and Python sign a mangled copy — so there is no
-digest that satisfies all of them and the emitter refuses rather than producing one
-some receivers compute differently; the verifier has no such problem and takes the
-bytes as they arrive, which is Go's behaviour. Skipping unreadable signature entries is
-what their rotation model needs and what their own tests require: they put a `v2,`
+short key on receive would break a live integration to make a point. Before 1.3.0, the Go,
+JavaScript, Python and Rust reference libraries disagreed about a body that is not
+well-formed UTF-8: Go signed the bytes, JavaScript signed a copy with invalid sequences
+replaced by U+FFFD, and Python and Rust refused the body (Python's verify raised
+`UnicodeDecodeError`). Since 1.3.0 (standard-webhooks/standard-webhooks#348), JavaScript
+and Python sign the bytes as Go does. Rust still refuses the body (going by its source at
+`v1.3.0`; not run), and receivers on JavaScript releases before 1.3.0 still compute the
+replaced-character digest. So the emitter still refuses rather than producing a signature
+some receivers reject or compute differently; the verifier has no such problem and takes
+the bytes as they arrive, which is Go's behaviour. Skipping unreadable signature entries
+is what their rotation model needs and what their own tests require: they put a `v2,`
 entry beside a valid one and expect the request to succeed.
 
 ### What the interop claim covers
@@ -222,7 +230,7 @@ implementations — the JavaScript, Go, Python, Ruby, PHP and C# test suites all
 same one — plus the Rust crate's own vector, both signing and verifying, byte for byte.
 The two counts above describe different sets: six suites pin that vector, and the four
 libraries whose payload handling was read at source (Go, Rust, JavaScript, Python) are
-the ones that disagree about non-UTF-8 bodies.
+the ones whose handling of non-UTF-8 bodies is described above.
 Both are committed in `test/standard-webhooks-vectors.ts` with the upstream commit and
 path they came from.
 

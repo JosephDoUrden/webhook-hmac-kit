@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README: the replay store's TTL must exceed 2 × tolerance (2 × tolerance + 1 seconds),
   not 1 × tolerance. The window is symmetric, so a request stamped at `now + tolerance`
   stays verifiable for 2 × tolerance. Corrected in Replay Protection and the Threat Model.
+- README: the comparison table re-checked on 26 Nov 2026 against standardwebhooks 1.3.0,
+  svix 2.11.1 and stripe 23.2.0. standardwebhooks 1.3.0 shipped
+  standard-webhooks/standard-webhooks#348, so it now verifies any `Uint8Array` and the
+  body-type difference against it is gone; the svix cell says the same through its
+  dependency. Since that release JavaScript and Python also sign a non-UTF-8 body byte
+  for byte, which the Standard Webhooks section now says. Source lines updated.
 
 ### Changed
 
